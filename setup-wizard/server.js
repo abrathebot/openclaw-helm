@@ -14,10 +14,9 @@ app.use(express.json());
 // Inject BASE_PATH into index.html dynamically
 app.get([BASE_PATH, BASE_PATH + '/'], (req, res) => {
   let html = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
-  html = html.replace(
-    '</head>',
-    `<base href="${BASE_PATH}/"><script>window.BASE_PATH = '${BASE_PATH}';</script>\n</head>`
-  );
+  html = html
+    .replace('<head>', `<head>\n  <base href="${BASE_PATH}/">`)
+    .replace('</head>', `<script>window.BASE_PATH = '${BASE_PATH}';</script>\n</head>`);
   res.send(html);
 });
 
