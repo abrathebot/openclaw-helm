@@ -37,11 +37,14 @@ function render() {
       <div>
         <div class="dash-logo">🎩 OpenClaw<span>${INSTANCE}</span></div>
       </div>
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <div class="status-badge ${badgeClass}">
           <div class="status-dot"></div>
           ${badgeText}
         </div>
+        <a href="${BASE}/gateway/" target="_blank" class="btn btn-primary" style="font-size:12px;padding:6px 14px;min-height:32px;text-decoration:none;display:inline-flex;align-items:center;gap:5px">
+          🔌 Gateway UI
+        </a>
         <a href="${BASE}/" class="btn btn-secondary" style="font-size:12px;padding:6px 14px;min-height:32px;text-decoration:none;display:inline-flex;align-items:center">
           ⚙️ Wizard
         </a>

@@ -56,11 +56,36 @@ function getGatewayPort() {
   } catch { return 18789; }
 }
 
+// Ensure trailing slash + inject <base href> so relative assets resolve correctly
+app.get(`${BASE_PATH}/gateway`, (req, res, next) => {
+  if (!req.path.endsWith('/')) return res.redirect(301, `${BASE_PATH}/gateway/`);
+  next();
+});
+
+// Gateway HTML root — fetch manually so we can inject <base href>
+app.get(`${BASE_PATH}/gateway/`, async (req, res) => {
+  const port = getGatewayPort();
+  try {
+    const upstream = await fetch(`http://localhost:${port}/`, { signal: AbortSignal.timeout(3000) });
+    let html = await upstream.text();
+    html = html.replace('<head>', `<head>\n  <base href="${BASE_PATH}/gateway/">`);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  } catch (e) {
+    res.status(502).send(`<html><body style="font:16px sans-serif;background:#0a0a12;color:#f87171;padding:40px">
+      <h2>⚠️ Gateway not reachable</h2>
+      <p>OpenClaw gateway is not running on port ${port}.</p>
+      <p><a href="${BASE_PATH}/dashboard" style="color:#818cf8">← Back to Dashboard</a></p>
+    </body></html>`);
+  }
+});
+
+// All other gateway routes — pass through via proxy
 app.use(`${BASE_PATH}/gateway`, createProxyMiddleware({
   router: () => `http://localhost:${getGatewayPort()}`,
   pathRewrite: { [`^${BASE_PATH}/gateway`]: '' },
   changeOrigin: true,
-  ws: true,  // proxy WebSocket too (for streaming)
+  ws: true,
   on: {
     error: (err, req, res) => {
       if (res.writeHead) {
