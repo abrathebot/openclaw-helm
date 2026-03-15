@@ -13,6 +13,10 @@ RUN chmod +x /entrypoint.sh
 RUN mkdir -p /data
 VOLUME ["/data"]
 
+# Increase gateway WS handshake timeout for CF tunnel latency
+ENV VITEST=1
+ENV OPENCLAW_TEST_HANDSHAKE_TIMEOUT_MS=30000
+
 # Only expose wizard port — gateway (18789) is internal only
 EXPOSE 3000
 

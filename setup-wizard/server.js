@@ -550,14 +550,18 @@ server.on('upgrade', (req, socket, head) => {
   if (!req.url.startsWith(prefix)) { socket.destroy(); return; }
   const upstreamPath = req.url.slice(prefix.length) || '/';
   const upstream = net.connect(GATEWAY_PORT, '127.0.0.1', () => {
+    // Ensure Origin header is present and matches allowedOrigins
+    const headers = { ...req.headers };
+    headers['host'] = `localhost:${GATEWAY_PORT}`;
+    // If no origin, inject it so gateway CORS check passes
+    if (!headers['origin']) {
+      headers['origin'] = INGRESS_HOST ? `https://${INGRESS_HOST}` : `http://localhost:${PORT}`;
+    }
+    const headerStr = Object.entries(headers)
+      .map(([k,v]) => `${k}: ${v}`)
+      .join('\r\n');
     upstream.write(
-      `${req.method} ${upstreamPath} HTTP/1.1\r\n` +
-      `Host: localhost:${GATEWAY_PORT}\r\n` +
-      Object.entries(req.headers)
-        .filter(([k]) => !['host'].includes(k))
-        .map(([k,v]) => `${k}: ${v}`)
-        .join('\r\n') +
-      '\r\n\r\n'
+      `${req.method} ${upstreamPath} HTTP/1.1\r\n${headerStr}\r\n\r\n`
     );
     if (head && head.length) upstream.write(head);
     upstream.pipe(socket);
