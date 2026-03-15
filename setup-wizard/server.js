@@ -44,7 +44,7 @@ function spawnGateway() {
   gatewayStatus = 'starting';
   console.log(`[gateway] spawning: ${OPENCLAW_BIN} gateway start`);
 
-  const proc = spawn(OPENCLAW_BIN, ['gateway', 'start'], {
+  const proc = spawn(OPENCLAW_BIN, ['gateway', '--allow-unconfigured'], {
     detached: false,
     stdio: ['ignore', 'pipe', 'pipe'],
     env: {
@@ -76,9 +76,14 @@ function spawnGateway() {
 }
 
 // Auto-start gateway if config already exists
-if (fs.existsSync(CONFIG_PATH)) {
+// NOTE: Only safe inside container (HOME=/data isolated). Skip on host to avoid conflicts.
+const IS_CONTAINER = (HOME_DIR === '/data' || process.env.CONTAINER === '1');
+if (IS_CONTAINER && fs.existsSync(CONFIG_PATH)) {
   console.log(`[startup] Config found at ${CONFIG_PATH} — auto-starting gateway`);
   setTimeout(spawnGateway, 1000);
+} else if (fs.existsSync(CONFIG_PATH)) {
+  console.log(`[startup] Config found — skipping gateway auto-start (not in container)`);
+  gatewayStatus = 'external'; // gateway may be running externally
 }
 
 // ── Middleware ───────────────────────────────────────────────────────────────
@@ -169,13 +174,32 @@ app.get(`${BASE_PATH}/api/gateway-status`, async (req, res) => {
   res.json({ running: false, port: GATEWAY_PORT, procStatus: gatewayStatus });
 });
 
-// ── API: Start/restart gateway ───────────────────────────────────────────────
-app.post(`${BASE_PATH}/api/start-gateway`, (req, res) => {
+// ── API: Start/restart/stop gateway ─────────────────────────────────────────
+// Supports both /api/start-gateway and /api/gateway-action (dashboard compat)
+function handleGatewayAction(action, res) {
   if (!fs.existsSync(CONFIG_PATH)) {
-    return res.status(400).json({ success: false, error: 'No config found. Complete wizard first.' });
+    return res.status(400).json({ success: false, error: 'No config found. Complete wizard setup first.' });
   }
+  if (!IS_CONTAINER) {
+    return res.status(403).json({ success: false, error: 'Gateway management only available inside container.' });
+  }
+  if (action === 'stop') {
+    if (gatewayProc) {
+      try { gatewayProc.kill('SIGTERM'); } catch {}
+      gatewayProc = null;
+      gatewayStatus = 'stopped';
+    }
+    return res.json({ success: true, message: 'Gateway stopped.' });
+  }
+  // start or restart
   spawnGateway();
   res.json({ success: true, message: 'Gateway starting...' });
+}
+
+app.post(`${BASE_PATH}/api/start-gateway`, (req, res) => handleGatewayAction('start', res));
+app.post(`${BASE_PATH}/api/gateway-action`, (req, res) => {
+  const { action } = req.body || {};
+  handleGatewayAction(action || 'start', res);
 });
 
 // ── API: Config (scrubbed) ───────────────────────────────────────────────────
