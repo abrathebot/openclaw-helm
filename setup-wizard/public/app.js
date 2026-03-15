@@ -796,7 +796,11 @@ async function doInstall() {
     });
     const data = await res.json();
     if (data.success) {
-      renderSuccess(data);
+      // Redirect to dashboard after brief success flash
+      renderInstallSuccess(data);
+      setTimeout(() => {
+        window.location.href = (data.dashboardUrl) || `${BASE}/dashboard`;
+      }, 2500);
     } else {
       btn.disabled = false;
       btn.textContent = '🚀 Install OpenClaw';
@@ -807,44 +811,17 @@ async function doInstall() {
   }
 }
 
-function renderSuccess(data) {
-  const port = (data && data.gatewayPort) || 18789;
-  const started = data && data.gatewayStarted;
-  const host = window.location.hostname;
-
+function renderInstallSuccess(data) {
   document.getElementById('stepIndicator').textContent = '';
   document.getElementById('progressBar').innerHTML = '';
   document.getElementById('wizardCard').innerHTML = `
     <div class="success-screen">
       <div class="success-icon">🎉</div>
       <h2>Installation Complete!</h2>
-      <p>OpenClaw has been configured successfully.</p>
-
-      <div class="summary-section" style="margin-top:24px;text-align:left">
-        <h3>What's next</h3>
-        <div class="summary-row">
-          <span class="label">Config saved to</span>
-          <span class="value" style="font-size:11px">${(data && data.configPath) || '~/.openclaw/openclaw.json'}</span>
-        </div>
-        <div class="summary-row">
-          <span class="label">Gateway status</span>
-          <span class="value" style="color:${started ? '#22c55e' : '#f59e0b'}">${started ? '✓ Starting…' : '⚠ Start manually'}</span>
-        </div>
-        <div class="summary-row">
-          <span class="label">Gateway port</span>
-          <span class="value">${port}</span>
-        </div>
+      <p>OpenClaw has been configured. Redirecting to dashboard…</p>
+      <div style="margin-top:24px">
+        <div class="spinner" style="display:inline-block;width:24px;height:24px;border-width:3px"></div>
       </div>
-
-      ${!started ? `
-      <div class="guide-tip" style="margin-top:16px;text-align:left">
-        <strong>Start OpenClaw manually:</strong><br>
-        Run in terminal: <code>openclaw gateway start</code>
-      </div>` : ''}
-
-      <p style="margin-top:20px;font-size:13px;color:#6b7280">
-        You can now close this wizard and use OpenClaw via your configured channels (Telegram/WhatsApp).
-      </p>
     </div>
   `;
 }
@@ -857,7 +834,8 @@ renderModals();
     const res = await fetch(`${BASE}/api/status`);
     const { configured, gatewayPort } = await res.json();
     if (configured) {
-      renderAlreadyConfigured(gatewayPort || 18789);
+      // Already configured → go to dashboard
+      window.location.replace(`${BASE}/dashboard`);
     } else {
       goTo(0);
     }
@@ -866,37 +844,4 @@ renderModals();
   }
 })();
 
-function renderAlreadyConfigured(port) {
-  document.getElementById('stepIndicator').textContent = '';
-  document.getElementById('progressBar').innerHTML = '';
-  document.getElementById('wizardCard').innerHTML = `
-    <div class="success-screen">
-      <div class="success-icon">🎩</div>
-      <h2>OpenClaw is Configured</h2>
-      <p>Your OpenClaw instance is already set up and running.</p>
-      <div class="summary-section" style="margin-top:24px;text-align:left">
-        <h3>Gateway Info</h3>
-        <div class="summary-row">
-          <span class="label">Port</span>
-          <span class="value">${port}</span>
-        </div>
-        <div class="summary-row">
-          <span class="label">Local URL</span>
-          <span class="value">http://localhost:${port}</span>
-        </div>
-      </div>
-      <div class="guide-tip" style="margin-top:16px;text-align:left">
-        To reconfigure, delete <code>~/.openclaw/openclaw.json</code> and refresh this page.
-      </div>
-      <div class="btn-row" style="margin-top:24px">
-        <button class="btn btn-secondary" onclick="forceRewizard()">⚙️ Reconfigure</button>
-      </div>
-    </div>
-  `;
-}
 
-function forceRewizard() {
-  if (confirm('This will clear your current config and restart the wizard. Continue?')) {
-    api('/api/reset', { method: 'POST' }).then(() => goTo(0)).catch(() => goTo(0));
-  }
-}

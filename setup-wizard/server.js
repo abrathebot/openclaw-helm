@@ -1,6 +1,7 @@
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
+const fs      = require('fs');
+const path    = require('path');
+const { spawn, execSync } = require('child_process');
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3000');
@@ -15,6 +16,15 @@ app.use(express.json());
 // Inject BASE_PATH into index.html dynamically
 app.get([BASE_PATH, BASE_PATH + '/'], (req, res) => {
   let html = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
+  html = html
+    .replace('<head>', `<head>\n  <base href="${BASE_PATH}/">`)
+    .replace('</head>', `<script>window.BASE_PATH = '${BASE_PATH}';</script>\n</head>`);
+  res.send(html);
+});
+
+// Dashboard page
+app.get(`${BASE_PATH}/dashboard`, (req, res) => {
+  let html = fs.readFileSync(path.join(__dirname, 'public', 'dashboard.html'), 'utf8');
   html = html
     .replace('<head>', `<head>\n  <base href="${BASE_PATH}/">`)
     .replace('</head>', `<script>window.BASE_PATH = '${BASE_PATH}';</script>\n</head>`);
@@ -47,6 +57,95 @@ app.post(`${BASE_PATH}/api/reset`, (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── Dashboard API Routes ────────────────────────────────────────────────────
+
+// Return saved config (scrub secrets)
+app.get(`${BASE_PATH}/api/config`, (req, res) => {
+  try {
+    const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+    // Scrub API keys
+    if (cfg.auth?.profiles) {
+      Object.values(cfg.auth.profiles).forEach(p => {
+        if (p.apiKey) p.apiKey = '***';
+        if (p.token)  p.token  = '***';
+      });
+    }
+    res.json(cfg);
+  } catch {
+    res.json({});
+  }
+});
+
+// Gateway health check
+app.get(`${BASE_PATH}/api/gateway-status`, async (req, res) => {
+  let port = 18789;
+  try {
+    const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+    port = cfg?.gateway?.port || 18789;
+  } catch {}
+  try {
+    const r = await fetch(`http://localhost:${port}/api/status`, { signal: AbortSignal.timeout(2000) });
+    if (r.ok) {
+      const data = await r.json().catch(() => ({}));
+      return res.json({ running: true, port, ...data });
+    }
+    return res.json({ running: false, port });
+  } catch {
+    // Try a raw TCP ping via another heuristic
+    try {
+      const { execFileSync } = require('child_process');
+      execFileSync('nc', ['-z', 'localhost', String(port)], { timeout: 1000 });
+      return res.json({ running: true, port });
+    } catch {
+      return res.json({ running: false, port });
+    }
+  }
+});
+
+// Gateway log tail
+app.get(`${BASE_PATH}/api/gateway-log`, (req, res) => {
+  const logPaths = [
+    path.join(HOME_DIR, '.openclaw', 'gateway.log'),
+    path.join(HOME_DIR, '.openclaw', 'openclaw.log'),
+    '/tmp/openclaw.log'
+  ];
+  for (const p of logPaths) {
+    if (fs.existsSync(p)) {
+      try {
+        const raw = fs.readFileSync(p, 'utf8');
+        const lines = raw.split('\n').filter(Boolean).slice(-60);
+        return res.json({ lines });
+      } catch {}
+    }
+  }
+  // Try journalctl
+  try {
+    const { execFileSync } = require('child_process');
+    const out = execFileSync('journalctl', ['-u', 'openclaw', '-n', '50', '--no-pager', '--output=short'], { timeout: 2000 }).toString();
+    return res.json({ lines: out.split('\n').filter(Boolean) });
+  } catch {}
+  res.json({ lines: ['(No log file found. Check ~/.openclaw/gateway.log)'] });
+});
+
+// Gateway start/stop/restart
+app.post(`${BASE_PATH}/api/gateway-action`, (req, res) => {
+  const { action } = req.body || {};
+  const cmds = {
+    start:   ['openclaw', ['gateway', 'start']],
+    stop:    ['openclaw', ['gateway', 'stop']],
+    restart: ['openclaw', ['gateway', 'restart']]
+  };
+  const cmd = cmds[action];
+  if (!cmd) return res.status(400).json({ error: 'Unknown action' });
+  try {
+    const proc = spawn(cmd[0], cmd[1], { detached: true, stdio: 'ignore', env: { ...process.env, HOME: HOME_DIR } });
+    proc.unref();
+    res.json({ success: true, action });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 
@@ -125,7 +224,8 @@ app.post(`${BASE_PATH}/api/install`, (req, res) => {
       message: 'Configuration saved.',
       gatewayPort,
       gatewayStarted,
-      configPath: CONFIG_PATH
+      configPath: CONFIG_PATH,
+      dashboardUrl: `${BASE_PATH}/dashboard`
     });
   } catch (err) {
     console.error('Install error:', err);
