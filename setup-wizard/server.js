@@ -30,7 +30,24 @@ app.get('/', (req, res) => res.redirect(BASE_PATH));
 // ── API Routes ──────────────────────────────────────────────────────────────
 
 app.get(`${BASE_PATH}/api/status`, (req, res) => {
-  res.json({ configured: fs.existsSync(CONFIG_PATH) });
+  const configured = fs.existsSync(CONFIG_PATH);
+  let gatewayPort = 18789;
+  if (configured) {
+    try {
+      const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+      gatewayPort = cfg?.gateway?.port || 18789;
+    } catch {}
+  }
+  res.json({ configured, gatewayPort });
+});
+
+app.post(`${BASE_PATH}/api/reset`, (req, res) => {
+  try {
+    if (fs.existsSync(CONFIG_PATH)) fs.unlinkSync(CONFIG_PATH);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 app.post(`${BASE_PATH}/api/validate-claude`, async (req, res) => {
