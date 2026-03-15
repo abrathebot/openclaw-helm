@@ -29,6 +29,269 @@ const formData = {
   gatewayToken:       ''
 };
 
+// ── Modal System ──────────────────────────────────────────────────────────────
+
+function openModal(id) {
+  const el = document.getElementById(id);
+  if (el) el.style.display = 'flex';
+}
+
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (el) el.style.display = 'none';
+}
+
+// Close modal on overlay click
+document.addEventListener('click', e => {
+  if (e.target.classList.contains('modal-overlay')) {
+    e.target.style.display = 'none';
+  }
+});
+
+// Close on Escape
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none');
+  }
+});
+
+function renderModals() {
+  const existing = document.getElementById('modalsRoot');
+  if (existing) return; // already rendered
+
+  const root = document.createElement('div');
+  root.id = 'modalsRoot';
+  root.innerHTML = `
+
+    <!-- Modal: Anthropic API Key -->
+    <div class="modal-overlay" id="modal-claude-key" style="display:none">
+      <div class="modal">
+        <div class="modal-header">
+          <div class="modal-title">🔑 Get Anthropic API Key</div>
+          <button class="modal-close" onclick="closeModal('modal-claude-key')">×</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-subtitle">Your API key lets OpenClaw call Claude models. Billed per token — no subscription needed.</p>
+          <div class="guide-steps">
+            <div class="guide-step">
+              <div class="guide-step-num">1</div>
+              <div class="guide-step-content">
+                <div class="guide-step-title">Open Anthropic Console</div>
+                <div class="guide-step-desc">Go to <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a> and sign in or create a free account.</div>
+              </div>
+            </div>
+            <div class="guide-step">
+              <div class="guide-step-num">2</div>
+              <div class="guide-step-content">
+                <div class="guide-step-title">Go to API Keys</div>
+                <div class="guide-step-desc">Click your profile icon (top-right) → <strong>API Keys</strong>, or open the left sidebar → <strong>Get API Keys</strong>.</div>
+              </div>
+            </div>
+            <div class="guide-step">
+              <div class="guide-step-num">3</div>
+              <div class="guide-step-content">
+                <div class="guide-step-title">Create a new key</div>
+                <div class="guide-step-desc">Click <strong>+ Create Key</strong>. Give it a name like <code>openclaw</code>. Copy the key immediately — it won't be shown again.</div>
+              </div>
+            </div>
+            <div class="guide-step">
+              <div class="guide-step-num">4</div>
+              <div class="guide-step-content">
+                <div class="guide-step-title">Add billing (optional)</div>
+                <div class="guide-step-desc">You get some free credits. Add a card in <strong>Billing</strong> when ready. Claude Sonnet costs ~$3/million tokens.</div>
+              </div>
+            </div>
+          </div>
+          <div class="guide-tip">💡 <strong>Tip:</strong> Key starts with <code>sk-ant-api03-</code></div>
+          <div class="guide-cta">
+            <a class="btn-link" href="https://console.anthropic.com/settings/keys" target="_blank">Open Anthropic Console →</a>
+            <button class="btn-link secondary" onclick="closeModal('modal-claude-key')">Got it, close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Claude Code Token -->
+    <div class="modal-overlay" id="modal-claude-code" style="display:none">
+      <div class="modal">
+        <div class="modal-header">
+          <div class="modal-title">⚡ Get Claude Code Token</div>
+          <button class="modal-close" onclick="closeModal('modal-claude-code')">×</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-subtitle">Use your existing Claude subscription (Pro/Max) — no API billing. Requires Claude Code CLI installed on the host.</p>
+          <div class="guide-steps">
+            <div class="guide-step">
+              <div class="guide-step-num">1</div>
+              <div class="guide-step-content">
+                <div class="guide-step-title">Install Claude Code</div>
+                <div class="guide-step-desc">Run: <code>npm install -g @anthropic-ai/claude-code</code></div>
+              </div>
+            </div>
+            <div class="guide-step">
+              <div class="guide-step-num">2</div>
+              <div class="guide-step-content">
+                <div class="guide-step-title">Authenticate</div>
+                <div class="guide-step-desc">Run <code>claude</code> in terminal and sign in with your Anthropic account. This creates credentials at <code>~/.claude/.credentials.json</code>.</div>
+              </div>
+            </div>
+            <div class="guide-step">
+              <div class="guide-step-num">3</div>
+              <div class="guide-step-content">
+                <div class="guide-step-title">Extract access token</div>
+                <div class="guide-step-desc">Run in terminal:<br><code>cat ~/.claude/.credentials.json | python3 -m json.tool</code><br><br>Copy the value of <code>claudeAiOauth.accessToken</code>.</div>
+              </div>
+            </div>
+            <div class="guide-step">
+              <div class="guide-step-num">4</div>
+              <div class="guide-step-content">
+                <div class="guide-step-title">Paste the token here</div>
+                <div class="guide-step-desc">Token starts with <code>sk-ant-oat01-</code>. Paste it in the field above.</div>
+              </div>
+            </div>
+          </div>
+          <div class="guide-tip">💡 <strong>Note:</strong> OAuth tokens expire. Re-login to Claude Code if validation fails.</div>
+          <div class="guide-cta">
+            <button class="btn-link secondary" onclick="closeModal('modal-claude-code')">Got it, close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Gemini API Key -->
+    <div class="modal-overlay" id="modal-gemini" style="display:none">
+      <div class="modal">
+        <div class="modal-header">
+          <div class="modal-title">🔍 Get Gemini API Key</div>
+          <button class="modal-close" onclick="closeModal('modal-gemini')">×</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-subtitle">Gemini API key enables web search in OpenClaw. The free tier is very generous.</p>
+          <div class="guide-steps">
+            <div class="guide-step">
+              <div class="guide-step-num">1</div>
+              <div class="guide-step-content">
+                <div class="guide-step-title">Open Google AI Studio</div>
+                <div class="guide-step-desc">Go to <a href="https://aistudio.google.com" target="_blank">aistudio.google.com</a> and sign in with your Google account.</div>
+              </div>
+            </div>
+            <div class="guide-step">
+              <div class="guide-step-num">2</div>
+              <div class="guide-step-content">
+                <div class="guide-step-title">Get API Key</div>
+                <div class="guide-step-desc">Click <strong>Get API Key</strong> on the left sidebar → <strong>Create API key</strong>. Select any project or create a new one.</div>
+              </div>
+            </div>
+            <div class="guide-step">
+              <div class="guide-step-num">3</div>
+              <div class="guide-step-content">
+                <div class="guide-step-title">Copy and paste here</div>
+                <div class="guide-step-desc">Key starts with <code>AIza</code>. Paste it in the Gemini API Key field.</div>
+              </div>
+            </div>
+          </div>
+          <div class="guide-tip">💡 <strong>Free tier:</strong> 1,500 requests/day at no cost. More than enough for personal use.</div>
+          <div class="guide-cta">
+            <a class="btn-link" href="https://aistudio.google.com/apikey" target="_blank">Open AI Studio →</a>
+            <button class="btn-link secondary" onclick="closeModal('modal-gemini')">Got it, close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Telegram Bot Token -->
+    <div class="modal-overlay" id="modal-telegram" style="display:none">
+      <div class="modal">
+        <div class="modal-header">
+          <div class="modal-title">🤖 Create Telegram Bot</div>
+          <button class="modal-close" onclick="closeModal('modal-telegram')">×</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-subtitle">You need a Telegram bot to connect OpenClaw. Takes about 1 minute via BotFather.</p>
+          <div class="guide-steps">
+            <div class="guide-step">
+              <div class="guide-step-num">1</div>
+              <div class="guide-step-content">
+                <div class="guide-step-title">Open BotFather</div>
+                <div class="guide-step-desc">Open Telegram and start a chat with <a href="https://t.me/BotFather" target="_blank">@BotFather</a> — Telegram's official bot manager.</div>
+              </div>
+            </div>
+            <div class="guide-step">
+              <div class="guide-step-num">2</div>
+              <div class="guide-step-content">
+                <div class="guide-step-title">Create a new bot</div>
+                <div class="guide-step-desc">Send <code>/newbot</code>. BotFather will ask for a name (e.g. <em>My Assistant</em>) and a username ending in <code>_bot</code> (e.g. <em>myassistant_bot</em>).</div>
+              </div>
+            </div>
+            <div class="guide-step">
+              <div class="guide-step-num">3</div>
+              <div class="guide-step-content">
+                <div class="guide-step-title">Copy the token</div>
+                <div class="guide-step-desc">BotFather will reply with your bot token. It looks like:<br><code>123456789:ABCDefGhIJKlmno...</code></div>
+              </div>
+            </div>
+            <div class="guide-step">
+              <div class="guide-step-num">4</div>
+              <div class="guide-step-content">
+                <div class="guide-step-title">Paste it here</div>
+                <div class="guide-step-desc">Paste the full token in the <strong>Bot Token</strong> field. Never share this token publicly.</div>
+              </div>
+            </div>
+          </div>
+          <div class="guide-tip">💡 <strong>Tip:</strong> You can disable privacy mode with <code>/setprivacy</code> → <em>Disable</em> if you want the bot to read all messages in groups.</div>
+          <div class="guide-cta">
+            <a class="btn-link" href="https://t.me/BotFather" target="_blank">Open BotFather →</a>
+            <button class="btn-link secondary" onclick="closeModal('modal-telegram')">Got it, close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Telegram User ID -->
+    <div class="modal-overlay" id="modal-telegram-id" style="display:none">
+      <div class="modal">
+        <div class="modal-header">
+          <div class="modal-title">🪪 Find Your Telegram ID</div>
+          <button class="modal-close" onclick="closeModal('modal-telegram-id')">×</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-subtitle">OpenClaw uses your numeric Telegram user ID to allow only you (and authorized people) to use the bot.</p>
+          <div class="guide-steps">
+            <div class="guide-step">
+              <div class="guide-step-num">1</div>
+              <div class="guide-step-content">
+                <div class="guide-step-title">Open userinfobot</div>
+                <div class="guide-step-desc">Start a chat with <a href="https://t.me/userinfobot" target="_blank">@userinfobot</a> on Telegram.</div>
+              </div>
+            </div>
+            <div class="guide-step">
+              <div class="guide-step-num">2</div>
+              <div class="guide-step-content">
+                <div class="guide-step-title">Send /start or any message</div>
+                <div class="guide-step-desc">The bot will instantly reply with your user info including your numeric <strong>Id</strong> (e.g. <code>123456789</code>).</div>
+              </div>
+            </div>
+            <div class="guide-step">
+              <div class="guide-step-num">3</div>
+              <div class="guide-step-content">
+                <div class="guide-step-title">Paste the ID here</div>
+                <div class="guide-step-desc">Enter the numeric ID in the <strong>Allowed Telegram User IDs</strong> field. Add multiple IDs separated by commas.</div>
+              </div>
+            </div>
+          </div>
+          <div class="guide-tip">💡 <strong>Leave blank</strong> to allow anyone who messages your bot. Not recommended for public deployments.</div>
+          <div class="guide-cta">
+            <a class="btn-link" href="https://t.me/userinfobot" target="_blank">Open userinfobot →</a>
+            <button class="btn-link secondary" onclick="closeModal('modal-telegram-id')">Got it, close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  `;
+  document.body.appendChild(root);
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function mask(key) {
@@ -128,10 +391,12 @@ function renderAIProvider(card) {
     <div id="apiKeySection" style="display:${isApiKey ? 'block' : 'none'}">
       <div class="auth-info">
         Use your Anthropic API key. Billed per token.
-        <a href="https://console.anthropic.com" target="_blank">Get key →</a>
       </div>
       <div class="form-group">
-        <label>API Key <span class="required">*</span></label>
+        <div class="label-row">
+          <label>API Key <span class="required">*</span></label>
+          <button class="help-btn" onclick="openModal('modal-claude-key')">❓ How to get?</button>
+        </div>
         <input type="password" id="anthropicKey" value="${formData.anthropicApiKey}"
           placeholder="sk-ant-api03-..."
           oninput="formData.anthropicApiKey = this.value">
@@ -144,14 +409,16 @@ function renderAIProvider(card) {
         Use your Claude Code OAuth token. No API billing — uses your Claude subscription.
       </div>
       <div class="form-group">
-        <label>Claude Code Token <span class="required">*</span></label>
+        <div class="label-row">
+          <label>Claude Code Token <span class="required">*</span></label>
+          <button class="help-btn" onclick="openModal('modal-claude-code')">❓ How to get?</button>
+        </div>
         <textarea id="claudeCodeToken" rows="3"
           placeholder="Paste your Claude Code access token here..."
           oninput="formData.anthropicApiKey = this.value"
           style="font-family:monospace;font-size:12px">${formData.claudeAuthMode === 'claude-code' ? formData.anthropicApiKey : ''}</textarea>
         <div class="hint">
           Find it in <code>~/.claude/.credentials.json</code> → <code>claudeAiOauth.accessToken</code>
-          <br>Or run: <code>cat ~/.claude/.credentials.json | python3 -m json.tool</code>
         </div>
         <div class="error-msg" id="claudeError"></div>
       </div>
@@ -163,13 +430,14 @@ function renderAIProvider(card) {
     <hr style="border:none;border-top:1px solid #2a2a3e;margin:20px 0">
 
     <div class="form-group">
-      <label>Gemini API Key <span class="optional">(optional)</span></label>
+      <div class="label-row">
+        <label>Gemini API Key <span class="optional">(optional)</span></label>
+        <button class="help-btn" onclick="openModal('modal-gemini')">❓ How to get?</button>
+      </div>
       <input type="password" id="geminiKey" value="${formData.geminiApiKey}"
         placeholder="AIza..."
         oninput="formData.geminiApiKey = this.value">
-      <div class="hint">Enables web search. Free tier available at
-        <a href="https://aistudio.google.com" target="_blank">aistudio.google.com</a>
-      </div>
+      <div class="hint">Enables web search grounding. Free tier: 1,500 req/day.</div>
     </div>
 
     <div class="btn-row">
@@ -311,18 +579,24 @@ function renderTelegram(card) {
     </div>
     <div class="conditional-fields ${open ? 'open' : ''}" id="tgFields">
       <div class="form-group">
-        <label>Bot Token</label>
+        <div class="label-row">
+          <label>Bot Token</label>
+          <button class="help-btn" onclick="openModal('modal-telegram')">❓ Create bot</button>
+        </div>
         <input type="password" id="tgToken" value="${formData.telegramBotToken}"
           placeholder="123456789:ABC-DEF1234ghIkl-zyx57W2v..."
           oninput="formData.telegramBotToken = this.value">
-        <div class="hint">Create via <a href="https://t.me/BotFather" target="_blank">@BotFather</a></div>
+        <div class="hint">Create via @BotFather · takes ~1 minute</div>
       </div>
       <div class="form-group">
-        <label>Allowed Telegram User IDs</label>
+        <div class="label-row">
+          <label>Allowed Telegram User IDs</label>
+          <button class="help-btn" onclick="openModal('modal-telegram-id')">❓ Find my ID</button>
+        </div>
         <input type="text" value="${formData.telegramAllowFrom}"
           placeholder="123456789, 987654321"
           oninput="formData.telegramAllowFrom = this.value">
-        <div class="hint">Comma or newline separated. Get your ID from <a href="https://t.me/userinfobot" target="_blank">@userinfobot</a></div>
+        <div class="hint">Comma-separated numeric IDs. Leave blank to allow anyone (not recommended).</div>
       </div>
     </div>
     <div class="btn-row">
@@ -473,4 +747,5 @@ function renderSuccess() {
 }
 
 // Init
+renderModals();
 goTo(0);

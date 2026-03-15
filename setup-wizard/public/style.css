@@ -446,3 +446,79 @@ code {
   background:#1a1a2e; border:1px solid #2a2a3e; border-radius:4px;
   padding:1px 5px; font-size:11px; color:#c4b5fd; font-family:monospace;
 }
+
+/* ── Modal ────────────────────────────────────────────────────────────────── */
+.modal-overlay {
+  position:fixed; inset:0; background:rgba(0,0,0,.75); backdrop-filter:blur(4px);
+  z-index:1000; display:flex; align-items:center; justify-content:center; padding:20px;
+  animation:fadeIn .15s ease;
+}
+@keyframes fadeIn { from{opacity:0} to{opacity:1} }
+
+.modal {
+  background:#12121f; border:1px solid #2a2a3e; border-radius:16px;
+  width:100%; max-width:500px; max-height:90vh; overflow-y:auto;
+  box-shadow:0 24px 64px rgba(0,0,0,.6); animation:slideUp .2s ease;
+}
+@keyframes slideUp { from{transform:translateY(16px);opacity:0} to{transform:translateY(0);opacity:1} }
+
+.modal-header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:20px 24px 0; margin-bottom:4px;
+}
+.modal-title { font-size:18px; font-weight:700; color:#f3f4f6; }
+.modal-close {
+  background:none; border:none; color:#6b7280; cursor:pointer; font-size:22px;
+  line-height:1; padding:4px 8px; border-radius:6px; transition:color .15s, background .15s;
+}
+.modal-close:hover { color:#f3f4f6; background:#2a2a3e; }
+
+.modal-body { padding:16px 24px 24px; }
+.modal-subtitle {
+  font-size:13px; color:#9ca3af; margin-bottom:20px; line-height:1.6;
+}
+
+.guide-steps { display:flex; flex-direction:column; gap:12px; }
+.guide-step {
+  display:flex; gap:14px; align-items:flex-start;
+  background:#0f0f1a; border:1px solid #1e1e35; border-radius:10px; padding:14px;
+}
+.guide-step-num {
+  flex-shrink:0; width:28px; height:28px; border-radius:50%;
+  background:#4c1d95; color:#ddd6fe; font-size:13px; font-weight:700;
+  display:flex; align-items:center; justify-content:center;
+}
+.guide-step-content { flex:1; }
+.guide-step-title { font-size:14px; font-weight:600; color:#e2e8f0; margin-bottom:4px; }
+.guide-step-desc { font-size:13px; color:#9ca3af; line-height:1.6; }
+.guide-step-desc a { color:#7c3aed; text-decoration:none; }
+.guide-step-desc a:hover { text-decoration:underline; }
+
+.guide-tip {
+  margin-top:16px; background:#0f1a2e; border:1px solid #1e3a5f; border-radius:8px;
+  padding:12px 14px; font-size:13px; color:#93c5fd; line-height:1.6;
+}
+.guide-tip strong { color:#60a5fa; }
+
+.guide-cta {
+  display:flex; flex-direction:column; gap:8px; margin-top:16px;
+}
+.btn-link {
+  display:inline-flex; align-items:center; gap:8px; background:#4c1d95; color:#ddd6fe;
+  border:none; border-radius:8px; padding:10px 16px; font-size:14px; font-weight:500;
+  cursor:pointer; text-decoration:none; transition:background .2s; justify-content:center;
+}
+.btn-link:hover { background:#5b21b6; }
+.btn-link.secondary {
+  background:#1a1a2e; border:1px solid #2a2a3e; color:#9ca3af;
+}
+.btn-link.secondary:hover { border-color:#7c3aed; color:#c4b5fd; }
+
+/* Help button inline with label */
+.label-row { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+.help-btn {
+  font-size:11px; color:#7c3aed; background:none; border:1px solid #4c1d95;
+  border-radius:20px; padding:2px 10px; cursor:pointer; transition:all .15s;
+  white-space:nowrap;
+}
+.help-btn:hover { background:#1e1030; color:#a78bfa; }
