@@ -34,8 +34,27 @@ const OPENCLAW_BIN = findOpenClaw();
 // ── Gateway process management ──────────────────────────────────────────────
 let gatewayProc = null;
 let gatewayStatus = 'stopped'; // 'stopped' | 'starting' | 'running' | 'error'
+const LOG_PATH = path.join(CONFIG_DIR, 'gateway.log');
+const MAX_LOG_LINES = 200;
+let logBuffer = []; // in-memory ring buffer
 
-function spawnGateway() {
+function appendLog(line) {
+  const ts = new Date().toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, 'Z');
+  const entry = `[${ts}] ${line.trimEnd()}`;
+  logBuffer.push(entry);
+  if (logBuffer.length > MAX_LOG_LINES) logBuffer.shift();
+  // Also write to file (best effort)
+  try {
+    fs.mkdirSync(CONFIG_DIR, { recursive: true });
+    fs.appendFileSync(LOG_PATH, entry + '\n');
+  } catch {}
+}
+
+function spawnGateway(force = false) {
+  if (gatewayProc && !force) {
+    console.log('[gateway] already running, skip spawn');
+    return;
+  }
   if (gatewayProc) {
     try { gatewayProc.kill('SIGTERM'); } catch {}
     gatewayProc = null;
@@ -54,15 +73,24 @@ function spawnGateway() {
     }
   });
 
-  proc.stdout.on('data', d => process.stdout.write(`[gw] ${d}`));
-  proc.stderr.on('data', d => process.stderr.write(`[gw] ${d}`));
+  const onData = (d) => {
+    const text = d.toString();
+    process.stdout.write(`[gw] ${text}`);
+    text.split('\n').filter(l => l.trim()).forEach(appendLog);
+  };
+  proc.stdout.on('data', onData);
+  proc.stderr.on('data', onData);
   proc.on('exit', (code, sig) => {
-    console.log(`[gateway] exited code=${code} sig=${sig}`);
+    const msg = `[gateway] exited code=${code} sig=${sig}`;
+    console.log(msg);
+    appendLog(msg);
     gatewayStatus = 'stopped';
     gatewayProc = null;
   });
   proc.on('error', err => {
-    console.error('[gateway] spawn error:', err.message);
+    const msg = `[gateway] spawn error: ${err.message}`;
+    console.error(msg);
+    appendLog(msg);
     gatewayStatus = 'error';
     gatewayProc = null;
   });
@@ -199,9 +227,9 @@ function handleGatewayAction(action, res) {
     }
     return res.json({ success: true, message: 'Gateway stopped.' });
   }
-  // start or restart
-  spawnGateway();
-  res.json({ success: true, message: 'Gateway starting...' });
+  // start or restart (force=true on restart to kill existing)
+  spawnGateway(action === 'restart');
+  res.json({ success: true, message: action === 'restart' ? 'Gateway restarting...' : 'Gateway starting...' });
 }
 
 app.post(`${BASE_PATH}/api/start-gateway`, (req, res) => handleGatewayAction('start', res));
@@ -268,19 +296,16 @@ app.post(`${BASE_PATH}/api/validate/anthropic`, async (req, res) => {
 
 // ── API: Gateway log ─────────────────────────────────────────────────────────
 app.get(`${BASE_PATH}/api/gateway-log`, (req, res) => {
-  const logCandidates = [
-    path.join(CONFIG_DIR, 'gateway.log'),
-    path.join(CONFIG_DIR, 'openclaw.log'),
-    '/tmp/openclaw.log',
-  ];
-  for (const p of logCandidates) {
-    if (fs.existsSync(p)) {
-      try {
-        const lines = fs.readFileSync(p, 'utf8').split('\n').filter(Boolean).slice(-60);
-        return res.json({ lines });
-      } catch {}
-    }
+  // Prefer in-memory buffer (always fresh), fallback to file
+  if (logBuffer.length > 0) {
+    return res.json({ lines: logBuffer.slice(-60) });
   }
+  try {
+    if (fs.existsSync(LOG_PATH)) {
+      const lines = fs.readFileSync(LOG_PATH, 'utf8').split('\n').filter(Boolean).slice(-60);
+      return res.json({ lines });
+    }
+  } catch {}
   res.json({ lines: [] });
 });
 
