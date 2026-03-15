@@ -150,7 +150,18 @@ app.use(`${BASE_PATH}/gateway`, (req, res) => {
       let body = '';
       proxyRes.on('data', c => body += c);
       proxyRes.on('end', () => {
-        body = body.replace('<head>', `<head>\n  <base href="${BASE_PATH}/gateway/">`);
+        const proto = INGRESS_HOST ? 'wss' : 'ws';
+        const wsHost = INGRESS_HOST || `localhost:${PORT}`;
+        const wsUrl = `${proto}://${wsHost}${BASE_PATH}/gateway`;
+        const wsScript = `<script>
+  // Auto-fill WebSocket URL for this deployment
+  window.__OC_WS_URL__ = ${JSON.stringify(wsUrl)};
+  document.addEventListener('DOMContentLoaded', () => {
+    const inp = document.querySelector('input[placeholder*="WebSocket"], input[placeholder*="ws"], input[type="text"]');
+    if (inp && !inp.value) inp.value = window.__OC_WS_URL__;
+  });
+</script>`;
+        body = body.replace('<head>', `<head>\n  <base href="${BASE_PATH}/gateway/">\n  ${wsScript}`);
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(body);
       });
@@ -503,11 +514,35 @@ app.post(`${BASE_PATH}/api/install`, (req, res) => {
 });
 
 // ── Start ────────────────────────────────────────────────────────────────────
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`OpenClaw Setup Wizard → http://0.0.0.0:${PORT}${BASE_PATH}`);
   console.log(`  CONFIG_DIR  : ${CONFIG_DIR}`);
   console.log(`  CONFIG_PATH : ${CONFIG_PATH}`);
   console.log(`  HOME_DIR    : ${HOME_DIR}`);
   console.log(`  GATEWAY_PORT: ${GATEWAY_PORT}`);
   console.log(`  INGRESS_HOST: ${INGRESS_HOST || '(not set)'}`);
+});
+
+// ── WebSocket proxy for /gateway ──────────────────────────────────────────────
+const net = require('net');
+server.on('upgrade', (req, socket, head) => {
+  const prefix = BASE_PATH + '/gateway';
+  if (!req.url.startsWith(prefix)) { socket.destroy(); return; }
+  const upstreamPath = req.url.slice(prefix.length) || '/';
+  const upstream = net.connect(GATEWAY_PORT, '127.0.0.1', () => {
+    upstream.write(
+      `${req.method} ${upstreamPath} HTTP/1.1\r\n` +
+      `Host: localhost:${GATEWAY_PORT}\r\n` +
+      Object.entries(req.headers)
+        .filter(([k]) => !['host'].includes(k))
+        .map(([k,v]) => `${k}: ${v}`)
+        .join('\r\n') +
+      '\r\n\r\n'
+    );
+    if (head && head.length) upstream.write(head);
+    upstream.pipe(socket);
+    socket.pipe(upstream);
+  });
+  upstream.on('error', () => socket.destroy());
+  socket.on('error', () => upstream.destroy());
 });
