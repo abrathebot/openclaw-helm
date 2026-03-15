@@ -9,6 +9,21 @@ const PORT = parseInt(process.env.PORT || '3000');
 const BASE_PATH = (process.env.BASE_PATH || '/openclaw').replace(/\/$/, '');
 const HOME_DIR = process.env.HOME || '/root';
 const CONFIG_DIR = process.env.CONFIG_DIR || path.join(HOME_DIR, '.openclaw');
+
+// Find openclaw binary — prefer npm-global, fallback to PATH
+function findOpenClaw() {
+  const candidates = [
+    path.join(HOME_DIR, '.npm-global', 'bin', 'openclaw'),
+    '/usr/local/bin/openclaw',
+    '/usr/bin/openclaw',
+    'openclaw'
+  ];
+  for (const c of candidates) {
+    try { if (c === 'openclaw' || fs.existsSync(c)) return c; } catch {}
+  }
+  return 'openclaw';
+}
+const OPENCLAW_BIN = findOpenClaw();
 const CONFIG_PATH = path.join(CONFIG_DIR, 'openclaw.json');
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || path.join(HOME_DIR, '.openclaw', 'workspace');
 
@@ -111,23 +126,18 @@ app.get(`${BASE_PATH}/api/gateway-status`, async (req, res) => {
     const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
     port = cfg?.gateway?.port || 18789;
   } catch {}
-  try {
-    const r = await fetch(`http://localhost:${port}/api/status`, { signal: AbortSignal.timeout(2000) });
-    if (r.ok) {
-      const data = await r.json().catch(() => ({}));
-      return res.json({ running: true, port, ...data });
-    }
-    return res.json({ running: false, port });
-  } catch {
-    // Try a raw TCP ping via another heuristic
+  // Try known gateway endpoints
+  for (const endpoint of ['/health', '/api/health', '/api/status', '/']) {
     try {
-      const { execFileSync } = require('child_process');
-      execFileSync('nc', ['-z', 'localhost', String(port)], { timeout: 1000 });
-      return res.json({ running: true, port });
-    } catch {
-      return res.json({ running: false, port });
-    }
+      const r = await fetch(`http://localhost:${port}${endpoint}`, { signal: AbortSignal.timeout(2000) });
+      if (r.ok) {
+        const ct = r.headers.get('content-type') || '';
+        const data = ct.includes('json') ? await r.json().catch(() => ({})) : {};
+        return res.json({ running: true, port, endpoint, ...data });
+      }
+    } catch {}
   }
+  return res.json({ running: false, port });
 });
 
 // Gateway log tail
@@ -158,17 +168,16 @@ app.get(`${BASE_PATH}/api/gateway-log`, (req, res) => {
 // Gateway start/stop/restart
 app.post(`${BASE_PATH}/api/gateway-action`, (req, res) => {
   const { action } = req.body || {};
-  const cmds = {
-    start:   ['openclaw', ['gateway', 'start']],
-    stop:    ['openclaw', ['gateway', 'stop']],
-    restart: ['openclaw', ['gateway', 'restart']]
-  };
-  const cmd = cmds[action];
-  if (!cmd) return res.status(400).json({ error: 'Unknown action' });
+  const validActions = { start: true, stop: true, restart: true };
+  if (!validActions[action]) return res.status(400).json({ error: 'Unknown action' });
   try {
-    const proc = spawn(cmd[0], cmd[1], { detached: true, stdio: 'ignore', env: { ...process.env, HOME: HOME_DIR } });
+    const proc = spawn(OPENCLAW_BIN, ['gateway', action], {
+      detached: true,
+      stdio: ['ignore', 'ignore', 'ignore'],
+      env: { ...process.env, HOME: HOME_DIR, PATH: process.env.PATH }
+    });
     proc.unref();
-    res.json({ success: true, action });
+    res.json({ success: true, action, bin: OPENCLAW_BIN });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
@@ -231,15 +240,14 @@ app.post(`${BASE_PATH}/api/install`, (req, res) => {
     // Try to start openclaw gateway in background
     let gatewayStarted = false;
     try {
-      const { spawn } = require('child_process');
-      const gw = spawn('openclaw', ['gateway', 'start'], {
+      const gw = spawn(OPENCLAW_BIN, ['gateway', 'start'], {
         detached: true,
         stdio: 'ignore',
-        env: { ...process.env, HOME: HOME_DIR }
+        env: { ...process.env, HOME: HOME_DIR, PATH: process.env.PATH }
       });
       gw.unref();
       gatewayStarted = true;
-      console.log('OpenClaw gateway spawned.');
+      console.log('OpenClaw gateway spawned via', OPENCLAW_BIN);
     } catch (e) {
       console.log('Could not auto-start gateway:', e.message);
     }
@@ -366,7 +374,7 @@ function buildConfig(form) {
     gateway: {
       port: parseInt(form.gatewayPort) || 18789,
       mode: 'local',
-      bind: '0.0.0.0',
+      bind: 'lan',
       auth: {
         mode: 'token',
         token: form.gatewayToken || generateToken()
