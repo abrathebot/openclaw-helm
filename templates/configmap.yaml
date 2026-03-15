@@ -1,0 +1,78 @@
+{{- if .Values.preConfig.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "openclaw.fullname" . }}-config
+  labels:
+    {{- include "openclaw.labels" . | nindent 4 }}
+data:
+  openclaw.json: |
+    {
+      "auth": {
+        "profiles": {
+          "anthropic:default": {
+            "provider": "anthropic",
+            "mode": "token"
+          }
+        }
+      },
+      "agents": {
+        "defaults": {
+          "model": {
+            "primary": {{ .Values.preConfig.model | quote }},
+            "fallbacks": []
+          },
+          "workspace": "/data/workspace",
+          "contextTokens": 80000
+        }
+      },
+      "tools": {
+        "web": {
+          "search": {
+            "enabled": {{ if .Values.preConfig.geminiApiKey }}true{{ else }}false{{ end }},
+            "provider": "gemini",
+            "gemini": {
+              "apiKey": {{ .Values.preConfig.geminiApiKey | default "" | quote }}
+            }
+          }
+        }
+      },
+      "channels": {
+        "telegram": {
+          "enabled": {{ if .Values.preConfig.telegramBotToken }}true{{ else }}false{{ end }},
+          "dmPolicy": "allowlist",
+          "botToken": {{ .Values.preConfig.telegramBotToken | default "" | quote }},
+          "allowFrom": {{ .Values.preConfig.telegramAllowFrom | default list | toJson }},
+          "groupPolicy": "allowlist",
+          "streaming": "off"
+        },
+        "whatsapp": {
+          "enabled": false,
+          "dmPolicy": "allowlist",
+          "allowFrom": [],
+          "groupPolicy": "allowlist",
+          "debounceMs": 0,
+          "mediaMaxMb": 50
+        }
+      },
+      "gateway": {
+        "port": {{ .Values.preConfig.gatewayPort | default 18789 }},
+        "mode": "local",
+        "bind": "0.0.0.0",
+        "auth": {
+          "mode": "token",
+          "token": {{ .Values.preConfig.gatewayToken | default "" | quote }}
+        }
+      },
+      "plugins": {
+        "entries": {
+          "telegram": {
+            "enabled": {{ if .Values.preConfig.telegramBotToken }}true{{ else }}false{{ end }}
+          },
+          "whatsapp": {
+            "enabled": false
+          }
+        }
+      }
+    }
+{{- end }}

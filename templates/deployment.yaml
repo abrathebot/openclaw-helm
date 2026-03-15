@@ -1,0 +1,106 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "openclaw.fullname" . }}
+  labels:
+    {{- include "openclaw.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "openclaw.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "openclaw.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.preConfig.enabled }}
+      initContainers:
+        - name: write-config
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          command: ["sh", "-c"]
+          args:
+            - |
+              if [ ! -f /data/.openclaw/openclaw.json ]; then
+                mkdir -p /data/.openclaw /data/workspace
+                cp /config/openclaw.json /data/.openclaw/openclaw.json
+                echo "Pre-configured openclaw.json written."
+              else
+                echo "Config already exists, skipping."
+              fi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: preconfig
+              mountPath: /config
+      {{- end }}
+      containers:
+        - name: openclaw
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: HOME
+              value: "/data"
+            - name: OPENCLAW_CONFIG
+              value: "/data/.openclaw/openclaw.json"
+            {{- if .Values.preConfig.enabled }}
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openclaw.fullname" . }}-secrets
+                  key: anthropic-api-key
+                  optional: true
+            {{- end }}
+          ports:
+            - name: wizard
+              containerPort: 3000
+              protocol: TCP
+            - name: gateway
+              containerPort: {{ .Values.service.gatewayPort }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: wizard
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            failureThreshold: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: wizard
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "openclaw.fullname" . }}-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- if .Values.preConfig.enabled }}
+        - name: preconfig
+          configMap:
+            name: {{ include "openclaw.fullname" . }}-config
+        {{- end }}

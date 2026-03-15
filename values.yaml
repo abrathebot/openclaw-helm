@@ -1,0 +1,46 @@
+image:
+  repository: ghcr.io/openclaw/openclaw
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  wizardPort: 3000
+  gatewayPort: 18789
+  type: ClusterIP
+
+ingress:
+  enabled: false
+  className: nginx
+  host: openclaw.yourdomain.com
+  annotations: {}
+  tls: []
+
+persistence:
+  enabled: true
+  size: 2Gi
+  storageClass: ""
+  accessMode: ReadWriteOnce
+
+resources:
+  requests:
+    memory: 256Mi
+    cpu: 100m
+  limits:
+    memory: 1Gi
+    cpu: 500m
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Optional pre-config (bypasses wizard)
+preConfig:
+  enabled: false
+  anthropicApiKey: ""
+  geminiApiKey: ""
+  telegramBotToken: ""
+  telegramUserId: ""
+  telegramAllowFrom: []
+  gatewayPort: 18789
+  gatewayToken: ""
+  model: "anthropic/claude-sonnet-4-6"
