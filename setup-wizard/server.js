@@ -2,6 +2,7 @@ const express = require('express');
 const fs      = require('fs');
 const path    = require('path');
 const { spawn, execSync } = require('child_process');
+const { createProxyMiddleware } = require('http-proxy-middleware');
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3000');
@@ -30,6 +31,30 @@ app.get(`${BASE_PATH}/dashboard`, (req, res) => {
     .replace('</head>', `<script>window.BASE_PATH = '${BASE_PATH}';</script>\n</head>`);
   res.send(html);
 });
+
+// Gateway proxy — /{BASE_PATH}/gateway/* → localhost:{gatewayPort}/*
+// Resolve gateway port dynamically from saved config
+function getGatewayPort() {
+  try {
+    const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+    return cfg?.gateway?.port || 18789;
+  } catch { return 18789; }
+}
+
+app.use(`${BASE_PATH}/gateway`, createProxyMiddleware({
+  router: () => `http://localhost:${getGatewayPort()}`,
+  pathRewrite: { [`^${BASE_PATH}/gateway`]: '' },
+  changeOrigin: true,
+  ws: true,  // proxy WebSocket too (for streaming)
+  on: {
+    error: (err, req, res) => {
+      if (res.writeHead) {
+        res.writeHead(502, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Gateway not reachable', detail: err.message }));
+      }
+    }
+  }
+}));
 
 // Static files
 app.use(BASE_PATH, express.static(path.join(__dirname, 'public')));
