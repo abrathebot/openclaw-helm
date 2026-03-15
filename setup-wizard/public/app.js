@@ -795,36 +795,58 @@ async function doInstall() {
       body: JSON.stringify(formData)
     });
     const data = await res.json();
-    data.success ? renderSuccess() : (() => {
+    if (data.success) {
+      renderSuccess(data);
+    } else {
       btn.disabled = false;
       btn.textContent = '🚀 Install OpenClaw';
       alert('Installation failed: ' + (data.error || 'Unknown error'));
-    })();
-  } catch {
-    renderSuccess();
+    }
+  } catch (err) {
+    renderSuccess({});
   }
 }
 
-function renderSuccess() {
+function renderSuccess(data) {
+  const port = (data && data.gatewayPort) || 18789;
+  const started = data && data.gatewayStarted;
+  const host = window.location.hostname;
+
   document.getElementById('stepIndicator').textContent = '';
   document.getElementById('progressBar').innerHTML = '';
   document.getElementById('wizardCard').innerHTML = `
     <div class="success-screen">
-      <div class="success-icon">✅</div>
+      <div class="success-icon">🎉</div>
       <h2>Installation Complete!</h2>
-      <p>OpenClaw has been configured and is starting up.<br>The container will restart momentarily.</p>
-      <p style="margin-top:16px;color:#7c3aed;font-weight:600">
-        Refreshing in <span id="countdown">5</span>s…
+      <p>OpenClaw has been configured successfully.</p>
+
+      <div class="summary-section" style="margin-top:24px;text-align:left">
+        <h3>What's next</h3>
+        <div class="summary-row">
+          <span class="label">Config saved to</span>
+          <span class="value" style="font-size:11px">${(data && data.configPath) || '~/.openclaw/openclaw.json'}</span>
+        </div>
+        <div class="summary-row">
+          <span class="label">Gateway status</span>
+          <span class="value" style="color:${started ? '#22c55e' : '#f59e0b'}">${started ? '✓ Starting…' : '⚠ Start manually'}</span>
+        </div>
+        <div class="summary-row">
+          <span class="label">Gateway port</span>
+          <span class="value">${port}</span>
+        </div>
+      </div>
+
+      ${!started ? `
+      <div class="guide-tip" style="margin-top:16px;text-align:left">
+        <strong>Start OpenClaw manually:</strong><br>
+        Run in terminal: <code>openclaw gateway start</code>
+      </div>` : ''}
+
+      <p style="margin-top:20px;font-size:13px;color:#6b7280">
+        You can now close this wizard and use OpenClaw via your configured channels (Telegram/WhatsApp).
       </p>
     </div>
   `;
-  let c = 5;
-  const t = setInterval(() => {
-    c--;
-    const el = document.getElementById('countdown');
-    if (el) el.textContent = c;
-    if (c <= 0) { clearInterval(t); window.location.reload(); }
-  }, 1000);
 }
 
 // Init

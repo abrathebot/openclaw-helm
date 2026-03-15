@@ -85,11 +85,31 @@ app.post(`${BASE_PATH}/api/install`, (req, res) => {
     if (form.openaiApiKey)    envLines.push(`OPENAI_API_KEY=${form.openaiApiKey}`);
     fs.writeFileSync(path.join(CONFIG_DIR, '.env'), envLines.join('\n') + '\n', 'utf8');
 
-    res.json({ success: true, message: 'Configuration saved. OpenClaw is starting...' });
-    setTimeout(() => {
-      console.log('Config written. Restarting into OpenClaw...');
-      process.exit(0);
-    }, 1500);
+    const gatewayPort = parseInt(form.gatewayPort) || 18789;
+
+    // Try to start openclaw gateway in background
+    let gatewayStarted = false;
+    try {
+      const { spawn } = require('child_process');
+      const gw = spawn('openclaw', ['gateway', 'start'], {
+        detached: true,
+        stdio: 'ignore',
+        env: { ...process.env, HOME: HOME_DIR }
+      });
+      gw.unref();
+      gatewayStarted = true;
+      console.log('OpenClaw gateway spawned.');
+    } catch (e) {
+      console.log('Could not auto-start gateway:', e.message);
+    }
+
+    res.json({
+      success: true,
+      message: 'Configuration saved.',
+      gatewayPort,
+      gatewayStarted,
+      configPath: CONFIG_PATH
+    });
   } catch (err) {
     console.error('Install error:', err);
     res.status(500).json({ success: false, error: err.message });
