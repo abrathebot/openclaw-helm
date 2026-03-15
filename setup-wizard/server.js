@@ -153,13 +153,33 @@ app.use(`${BASE_PATH}/gateway`, (req, res) => {
         const proto = INGRESS_HOST ? 'wss' : 'ws';
         const wsHost = INGRESS_HOST || `localhost:${PORT}`;
         const wsUrl = `${proto}://${wsHost}${BASE_PATH}/gateway`;
+        // Read auth token from config
+        let gatewayToken = '';
+        try {
+          const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+          gatewayToken = cfg?.gateway?.auth?.token || '';
+        } catch {}
         const wsScript = `<script>
-  // Auto-fill WebSocket URL for this deployment
-  window.__OC_WS_URL__ = ${JSON.stringify(wsUrl)};
-  document.addEventListener('DOMContentLoaded', () => {
-    const inp = document.querySelector('input[placeholder*="WebSocket"], input[placeholder*="ws"], input[type="text"]');
-    if (inp && !inp.value) inp.value = window.__OC_WS_URL__;
-  });
+  // Auto-connect to this deployment's gateway
+  (function() {
+    const WS_URL = ${JSON.stringify(wsUrl)};
+    const TOKEN  = ${JSON.stringify(gatewayToken)};
+    // If already has hash token, skip
+    if (!location.hash || location.hash === '#') {
+      if (TOKEN) {
+        // Build tokenized URL so gateway auto-connects
+        const newUrl = location.href.split('#')[0] + '?wsUrl=' + encodeURIComponent(WS_URL) + '#token=' + encodeURIComponent(TOKEN);
+        history.replaceState(null, '', newUrl);
+      }
+    }
+    // Also auto-fill fields after DOM ready
+    document.addEventListener('DOMContentLoaded', () => {
+      const wsInp = document.querySelector('input[type="text"], input[placeholder*="ws"], input[placeholder*="WebSocket"]');
+      if (wsInp && !wsInp.value) { wsInp.value = WS_URL; wsInp.dispatchEvent(new Event('input')); }
+      const tkInp = document.querySelectorAll('input[type="password"], input[type="text"]')[1];
+      if (TOKEN && tkInp && !tkInp.value) { tkInp.value = TOKEN; tkInp.dispatchEvent(new Event('input')); }
+    });
+  })();
 </script>`;
         body = body.replace('<head>', `<head>\n  <base href="${BASE_PATH}/gateway/">\n  ${wsScript}`);
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
