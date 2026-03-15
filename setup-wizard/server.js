@@ -253,12 +253,39 @@ app.post(`${BASE_PATH}/api/install`, (req, res) => {
     fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf8');
 
-    // Write credentials file
+    // Write credentials to auth-profiles.json (openclaw credentials store)
+    const agentDir = path.join(HOME_DIR, '.openclaw', 'agents', 'main', 'agent');
+    fs.mkdirSync(agentDir, { recursive: true });
+    const authProfilesPath = path.join(agentDir, 'auth-profiles.json');
+    let authProfiles = { version: 1, profiles: {} };
+    try { authProfiles = JSON.parse(fs.readFileSync(authProfilesPath, 'utf8')); } catch {}
+
+    if (form.anthropicAuthMode === 'claude-code' && form.claudeCodeToken) {
+      authProfiles.profiles['anthropic:default'] = {
+        type: 'token', provider: 'anthropic', token: form.claudeCodeToken
+      };
+    } else if (form.anthropicApiKey) {
+      authProfiles.profiles['anthropic:default'] = {
+        type: 'api_key', provider: 'anthropic', key: form.anthropicApiKey
+      };
+    }
+    if (form.geminiApiKey) {
+      authProfiles.profiles['google:default'] = {
+        type: 'api_key', provider: 'google', key: form.geminiApiKey
+      };
+    }
+    if (form.openaiApiKey) {
+      authProfiles.profiles['openai:default'] = {
+        type: 'api_key', provider: 'openai', key: form.openaiApiKey
+      };
+    }
+    fs.writeFileSync(authProfilesPath, JSON.stringify(authProfiles, null, 2), 'utf8');
+    // Also write .env for env-based fallback
     const envLines = [];
     if (form.anthropicApiKey) envLines.push(`ANTHROPIC_API_KEY=${form.anthropicApiKey}`);
     if (form.geminiApiKey)    envLines.push(`GEMINI_API_KEY=${form.geminiApiKey}`);
     if (form.openaiApiKey)    envLines.push(`OPENAI_API_KEY=${form.openaiApiKey}`);
-    fs.writeFileSync(path.join(CONFIG_DIR, '.env'), envLines.join('\n') + '\n', 'utf8');
+    if (envLines.length) fs.writeFileSync(path.join(CONFIG_DIR, '.env'), envLines.join('\n') + '\n', 'utf8');
 
     const gatewayPort = parseInt(form.gatewayPort) || 18789;
 
@@ -328,17 +355,14 @@ function buildConfig(form) {
   if (modelsMap['anthropic/claude-sonnet-4-6'])  modelsMap['anthropic/claude-sonnet-4-6']  = { alias: 'sonnet' };
   if (modelsMap['anthropic/claude-haiku-3-5'])   modelsMap['anthropic/claude-haiku-3-5']   = { alias: 'haiku' };
 
-  const authProfile = form.claudeAuthMode === 'claude-code'
-    ? { provider: 'anthropic', mode: 'token',   token:  form.anthropicApiKey }
-    : { provider: 'anthropic', mode: 'api-key', apiKey: form.anthropicApiKey };
+  // Profile metadata only — actual secrets written to auth-profiles.json separately
+  const authProfile = (form.anthropicAuthMode === 'claude-code')
+    ? { provider: 'anthropic', mode: 'token'   }
+    : { provider: 'anthropic', mode: 'api_key' };
 
   const additionalProfiles = {};
-  if (hasGemini) {
-    additionalProfiles['google:default'] = { provider: 'google', mode: 'api-key', apiKey: form.geminiApiKey };
-  }
-  if (hasOpenAI) {
-    additionalProfiles['openai:default'] = { provider: 'openai', mode: 'api-key', apiKey: form.openaiApiKey };
-  }
+  if (hasGemini) additionalProfiles['google:default'] = { provider: 'google', mode: 'api_key' };
+  if (hasOpenAI) additionalProfiles['openai:default'] = { provider: 'openai', mode: 'api_key' };
 
   return {
     auth: {
@@ -370,8 +394,7 @@ function buildConfig(form) {
       web: {
         search: {
           enabled: !!(form.geminiApiKey),
-          provider: 'gemini',
-          gemini: { apiKey: form.geminiApiKey || '' }
+          provider: hasGemini ? 'gemini' : 'none'
         }
       }
     },
@@ -387,14 +410,18 @@ function buildConfig(form) {
         groupPolicy: 'allowlist',
         streaming: 'off'
       },
-      whatsapp: {
-        enabled: !!form.whatsappEnabled,
-        dmPolicy: 'allowlist',
-        allowFrom: parsePhoneNumbers(form.whatsappAllowFrom),
-        groupPolicy: 'allowlist',
-        debounceMs: 0,
-        mediaMaxMb: 50
-      }
+      whatsapp: (() => {
+        const allowFrom = parsePhoneNumbers(form.whatsappAllowFrom);
+        const hasAllowlist = allowFrom.length > 0;
+        return {
+          enabled: !!form.whatsappEnabled,
+          dmPolicy: hasAllowlist ? 'allowlist' : 'open',
+          allowFrom: hasAllowlist ? allowFrom : ['*'],
+          groupPolicy: 'allowlist',
+          debounceMs: 0,
+          mediaMaxMb: 50
+        };
+      })()
     },
     gateway: {
       port: parseInt(form.gatewayPort) || 18789,
@@ -403,6 +430,9 @@ function buildConfig(form) {
       auth: {
         mode: 'token',
         token: form.gatewayToken || generateToken()
+      },
+      controlUi: {
+        allowedOrigins: (form.publicDomain ? [`https://${form.publicDomain}`] : [])
       }
     },
     plugins: {
