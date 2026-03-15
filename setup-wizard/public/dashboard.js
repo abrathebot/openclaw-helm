@@ -56,7 +56,7 @@ function render() {
       ⚠️ OpenClaw gateway is not running. Start it manually:<br>
       <code style="font-size:12px">openclaw gateway start</code>
       &nbsp;&nbsp;
-      <button onclick="startGateway()" style="background:#7c3aed;border:none;color:white;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px;margin-top:8px">▶ Start Now</button>
+      <button data-gw="1" onclick="startGateway()" style="background:#7c3aed;border:none;color:white;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px;margin-top:8px">▶ Start Now</button>
     </div>` : ''}
 
     <!-- Stats grid -->
@@ -113,8 +113,9 @@ function render() {
       <!-- Actions — full width -->
       <div class="dash-card full">
         <div class="dash-card-title">⚡ Quick Actions</div>
+        <div id="gwActionStatus" style="font-size:13px;color:#f59e0b;min-height:18px;margin-bottom:6px"></div>
         <div class="action-grid">
-          <button class="action-btn" onclick="restartGateway()">
+          <button class="action-btn" data-gw="1" onclick="restartGateway()">
             <span class="action-icon">🔄</span>Restart Gateway
           </button>
           <button class="action-btn" onclick="location.href='${BASE}/'">
@@ -123,7 +124,7 @@ function render() {
           <button class="action-btn" onclick="refreshStatus()">
             <span class="action-icon">📊</span>Refresh Status
           </button>
-          <button class="action-btn danger" onclick="confirmStop()">
+          <button class="action-btn danger" data-gw="1" onclick="confirmStop()">
             <span class="action-icon">⏹</span>Stop Gateway
           </button>
         </div>
@@ -204,20 +205,45 @@ function escHtml(s) {
 }
 
 // ── Actions ──────────────────────────────────────────────────────────────────
+let gatewayActionBusy = false;
+
+function setGatewayBusy(busy, label) {
+  gatewayActionBusy = busy;
+  document.querySelectorAll('.action-btn[data-gw]').forEach(btn => {
+    btn.disabled = busy;
+    btn.style.opacity = busy ? '0.55' : '';
+    btn.style.cursor = busy ? 'not-allowed' : '';
+  });
+  const ind = document.getElementById('gwActionStatus');
+  if (ind) ind.textContent = busy ? (label || '⏳ Working…') : '';
+}
+
 async function startGateway() {
-  await api('/api/gateway-action', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action:'start'}) });
-  setTimeout(refreshStatus, 2000);
+  if (gatewayActionBusy) return;
+  setGatewayBusy(true, '⏳ Starting…');
+  try {
+    await api('/api/gateway-action', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action:'start'}) });
+    setTimeout(refreshStatus, 2500);
+  } finally { setTimeout(() => setGatewayBusy(false), 3000); }
 }
 
 async function restartGateway() {
-  await api('/api/gateway-action', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action:'restart'}) });
-  setTimeout(refreshStatus, 3000);
+  if (gatewayActionBusy) return;
+  setGatewayBusy(true, '⏳ Restarting…');
+  try {
+    await api('/api/gateway-action', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action:'restart'}) });
+    setTimeout(refreshStatus, 4000);
+  } finally { setTimeout(() => setGatewayBusy(false), 4500); }
 }
 
 async function confirmStop() {
+  if (gatewayActionBusy) return;
   if (confirm('Stop the OpenClaw gateway?')) {
-    await api('/api/gateway-action', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action:'stop'}) });
-    setTimeout(refreshStatus, 2000);
+    setGatewayBusy(true, '⏳ Stopping…');
+    try {
+      await api('/api/gateway-action', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action:'stop'}) });
+      setTimeout(refreshStatus, 2000);
+    } finally { setTimeout(() => setGatewayBusy(false), 2500); }
   }
 }
 

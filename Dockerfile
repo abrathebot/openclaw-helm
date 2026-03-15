@@ -1,6 +1,7 @@
 FROM node:22-alpine
 
-RUN npm install -g openclaw
+RUN apk add --no-cache git python3 make g++ && \
+    npm install -g openclaw
 
 COPY setup-wizard/ /wizard/
 RUN cd /wizard && npm install

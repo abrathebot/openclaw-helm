@@ -3,7 +3,6 @@ const express = require('express');
 const fs      = require('fs');
 const path    = require('path');
 const { spawn } = require('child_process');
-const { createProxyMiddleware } = require('http-proxy-middleware');
 
 // ── Config ──────────────────────────────────────────────────────────────────
 const app       = express();
@@ -42,9 +41,9 @@ function spawnGateway() {
     gatewayProc = null;
   }
   gatewayStatus = 'starting';
-  console.log(`[gateway] spawning: ${OPENCLAW_BIN} gateway start`);
+  console.log(`[gateway] spawning: ${OPENCLAW_BIN} gateway`);
 
-  const proc = spawn(OPENCLAW_BIN, ['gateway', '--allow-unconfigured'], {
+  const proc = spawn(OPENCLAW_BIN, ['gateway'], {
     detached: false,
     stdio: ['ignore', 'pipe', 'pipe'],
     env: {
@@ -103,46 +102,55 @@ app.get([BASE_PATH, BASE_PATH + '/'], (req, res) => serveHtml('index.html', req,
 app.get(`${BASE_PATH}/dashboard`, (req, res) => serveHtml('dashboard.html', req, res));
 
 // ── Gateway proxy ─────────────────────────────────────────────────────────────
-// Redirect /gateway → /gateway/ (trailing slash required for base href)
-app.get(`${BASE_PATH}/gateway`, (req, res) => {
-  if (!req.path.endsWith('/')) return res.redirect(301, `${BASE_PATH}/gateway/`);
-});
-
-// Inject <base href> into gateway HTML root
-app.get(`${BASE_PATH}/gateway/`, async (req, res) => {
-  try {
-    const r = await fetch(`http://localhost:${GATEWAY_PORT}/`, {
-      signal: AbortSignal.timeout(3000)
-    });
-    let html = await r.text();
-    html = html.replace('<head>', `<head>\n  <base href="${BASE_PATH}/gateway/">`);
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send(html);
-  } catch (e) {
-    res.status(502).send(`<html><body style="font:16px sans-serif;background:#0a0a12;color:#f87171;padding:40px">
-      <h2>⚠️ Gateway not reachable</h2>
-      <p>OpenClaw gateway is not running (port ${GATEWAY_PORT}).</p>
-      <p>Complete wizard setup first, or restart from dashboard.</p>
-      <p><a href="${BASE_PATH}/dashboard" style="color:#818cf8">← Dashboard</a></p>
-    </body></html>`);
-  }
-});
-
-// All other /gateway/* routes — pass through to internal gateway
-app.use(`${BASE_PATH}/gateway`, createProxyMiddleware({
-  router: () => `http://localhost:${GATEWAY_PORT}`,
-  pathRewrite: { [`^${BASE_PATH}/gateway`]: '' },
-  changeOrigin: true,
-  ws: true,
-  on: {
-    error: (err, req, res) => {
-      if (res && res.writeHead) {
-        res.writeHead(502, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Gateway not reachable', detail: err.message }));
-      }
+// ── Gateway proxy (all /gateway/* routes) ──────────────────────────────────
+// All /gateway/* — proxy to internal gateway with base href injection on root HTML
+app.use(`${BASE_PATH}/gateway`, (req, res) => {
+  const http = require('http');
+  // /gateway → treat as /gateway/ (root)
+  const isRoot = (req.path === '/' || req.path === '' || req.path === undefined);
+  const upstreamPath = req.path || '/';
+  const options = {
+    host: '127.0.0.1',
+    port: GATEWAY_PORT,
+    path: upstreamPath + (req.url.includes('?') ? '?' + req.url.split('?')[1] : ''),
+    method: req.method,
+    headers: { ...req.headers, host: `localhost:${GATEWAY_PORT}` }
+  };
+  const proxyReq = http.request(options, (proxyRes) => {
+    const isHtml = (proxyRes.headers['content-type'] || '').includes('text/html');
+    if (isRoot && isHtml) {
+      let body = '';
+      proxyRes.on('data', c => body += c);
+      proxyRes.on('end', () => {
+        body = body.replace('<head>', `<head>\n  <base href="${BASE_PATH}/gateway/">`);
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(body);
+      });
+    } else {
+      res.writeHead(proxyRes.statusCode, proxyRes.headers);
+      proxyRes.pipe(res);
     }
+  });
+  proxyReq.on('error', () => {
+    if (!res.headersSent) {
+      res.status(502).send(`<html><body style="font:16px sans-serif;background:#0a0a12;color:#f87171;padding:40px">
+        <h2>⚠️ Gateway not reachable</h2>
+        <p>OpenClaw gateway is not running (port ${GATEWAY_PORT}).</p>
+        <p><a href="${BASE_PATH}/dashboard" style="color:#818cf8">← Dashboard</a></p>
+      </body></html>`);
+    }
+  });
+  proxyReq.setTimeout(8000, () => proxyReq.destroy());
+  if (req.body && req.method !== 'GET') {
+    const body = JSON.stringify(req.body);
+    proxyReq.setHeader('Content-Length', Buffer.byteLength(body));
+    proxyReq.write(body);
+  } else {
+    req.pipe(proxyReq);
+    return; // pipe handles end
   }
-}));
+  proxyReq.end();
+});
 
 // Static files
 app.use(BASE_PATH, express.static(path.join(__dirname, 'public')));
