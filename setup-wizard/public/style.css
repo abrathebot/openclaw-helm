@@ -835,3 +835,32 @@ code {
 @media (min-width: 640px) {
   .wizard-container { max-width: 560px; }
 }
+
+/* Providers section in AI step */
+.providers-section {
+  border: 1px solid #2a2a3e;
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-top: 4px;
+  background: #0d0d1a;
+}
+.providers-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #9ca3af;
+  margin-bottom: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Empty state note */
+.empty-note {
+  background: #0f1a2e;
+  border: 1px dashed #2a3a5e;
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: #6b7280;
+  line-height: 1.6;
+  text-align: center;
+}

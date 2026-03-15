@@ -5,9 +5,10 @@ const path = require('path');
 const app = express();
 const PORT = parseInt(process.env.PORT || '3000');
 const BASE_PATH = (process.env.BASE_PATH || '/openclaw').replace(/\/$/, '');
-const CONFIG_DIR = process.env.CONFIG_DIR || '/data/.openclaw';
+const HOME_DIR = process.env.HOME || '/root';
+const CONFIG_DIR = process.env.CONFIG_DIR || path.join(HOME_DIR, '.openclaw');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'openclaw.json');
-const WORKSPACE_DIR = process.env.WORKSPACE_DIR || '/data/workspace';
+const WORKSPACE_DIR = process.env.WORKSPACE_DIR || path.join(HOME_DIR, '.openclaw', 'workspace');
 
 app.use(express.json());
 
@@ -81,6 +82,7 @@ app.post(`${BASE_PATH}/api/install`, (req, res) => {
     const envLines = [];
     if (form.anthropicApiKey) envLines.push(`ANTHROPIC_API_KEY=${form.anthropicApiKey}`);
     if (form.geminiApiKey)    envLines.push(`GEMINI_API_KEY=${form.geminiApiKey}`);
+    if (form.openaiApiKey)    envLines.push(`OPENAI_API_KEY=${form.openaiApiKey}`);
     fs.writeFileSync(path.join(CONFIG_DIR, '.env'), envLines.join('\n') + '\n', 'utf8');
 
     res.json({ success: true, message: 'Configuration saved. OpenClaw is starting...' });
@@ -97,11 +99,30 @@ app.post(`${BASE_PATH}/api/install`, (req, res) => {
 // ── Config Builder ──────────────────────────────────────────────────────────
 
 function buildConfig(form) {
-  const claudeMode = form.claudeAuthMode === 'claude-code' ? 'token' : 'token';
+  // Determine which providers have keys configured
+  const hasAnthropic = !!(form.anthropicApiKey);
+  const hasGemini    = !!(form.geminiApiKey);
+  const hasOpenAI    = !!(form.openaiApiKey);
 
-  // Build model list
+  function providerOf(model) {
+    if (model.startsWith('anthropic/')) return 'anthropic';
+    if (model.startsWith('google/'))    return 'google';
+    if (model.startsWith('openai/'))    return 'openai';
+    return 'unknown';
+  }
+
+  function hasKeyFor(model) {
+    const p = providerOf(model);
+    if (p === 'anthropic') return hasAnthropic;
+    if (p === 'google')    return hasGemini;
+    if (p === 'openai')    return hasOpenAI;
+    return false;
+  }
+
+  // Build model list — only include models whose provider has a key
   const primaryModel = form.model || 'anthropic/claude-sonnet-4-6';
-  const fallbackModels = (form.fallbackModels || []).filter(m => m && m !== primaryModel);
+  const fallbackModels = (form.fallbackModels || [])
+    .filter(m => m && m !== primaryModel && hasKeyFor(m));
 
   // Build models map
   const modelsMap = {};
@@ -112,13 +133,23 @@ function buildConfig(form) {
   if (modelsMap['anthropic/claude-sonnet-4-6'])  modelsMap['anthropic/claude-sonnet-4-6']  = { alias: 'sonnet' };
   if (modelsMap['anthropic/claude-haiku-3-5'])   modelsMap['anthropic/claude-haiku-3-5']   = { alias: 'haiku' };
 
+  const authProfile = form.claudeAuthMode === 'claude-code'
+    ? { provider: 'anthropic', mode: 'token',   token:  form.anthropicApiKey }
+    : { provider: 'anthropic', mode: 'api-key', apiKey: form.anthropicApiKey };
+
+  const additionalProfiles = {};
+  if (hasGemini) {
+    additionalProfiles['google:default'] = { provider: 'google', mode: 'api-key', apiKey: form.geminiApiKey };
+  }
+  if (hasOpenAI) {
+    additionalProfiles['openai:default'] = { provider: 'openai', mode: 'api-key', apiKey: form.openaiApiKey };
+  }
+
   return {
     auth: {
       profiles: {
-        'anthropic:default': {
-          provider: 'anthropic',
-          mode: claudeMode
-        }
+        'anthropic:default': authProfile,
+        ...additionalProfiles
       }
     },
     agents: {

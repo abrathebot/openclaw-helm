@@ -15,10 +15,11 @@ const MODELS = [
 const formData = {
   claudeAuthMode:     'api-key',      // 'api-key' | 'claude-code'
   anthropicApiKey:    '',
+  geminiApiKey:       '',
+  openaiApiKey:       '',
   model:              'anthropic/claude-sonnet-4-6',
   fallbackModels:     [],
   contextTokens:      80000,
-  geminiApiKey:       '',
   telegramEnabled:    true,
   telegramBotToken:   '',
   telegramAllowFrom:  '',
@@ -194,6 +195,54 @@ function renderModals() {
           <div class="guide-cta">
             <a class="btn-link" href="https://aistudio.google.com/apikey" target="_blank">Open AI Studio →</a>
             <button class="btn-link secondary" onclick="closeModal('modal-gemini')">Got it, close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: OpenAI API Key -->
+    <div class="modal-overlay" id="modal-openai" style="display:none">
+      <div class="modal">
+        <div class="modal-header">
+          <div class="modal-title">🤖 Get OpenAI API Key</div>
+          <button class="modal-close" onclick="closeModal('modal-openai')">×</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-subtitle">OpenAI API key enables GPT-4o as a fallback model. Pay-as-you-go billing.</p>
+          <div class="guide-steps">
+            <div class="guide-step">
+              <div class="guide-step-num">1</div>
+              <div class="guide-step-content">
+                <div class="guide-step-title">Open OpenAI Platform</div>
+                <div class="guide-step-desc">Go to <a href="https://platform.openai.com" target="_blank">platform.openai.com</a> and sign in or create an account.</div>
+              </div>
+            </div>
+            <div class="guide-step">
+              <div class="guide-step-num">2</div>
+              <div class="guide-step-content">
+                <div class="guide-step-title">Go to API Keys</div>
+                <div class="guide-step-desc">Click your profile icon → <strong>API Keys</strong>, or go to <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com/api-keys</a>.</div>
+              </div>
+            </div>
+            <div class="guide-step">
+              <div class="guide-step-num">3</div>
+              <div class="guide-step-content">
+                <div class="guide-step-title">Create a new key</div>
+                <div class="guide-step-desc">Click <strong>+ Create new secret key</strong>. Copy it immediately — it won't be shown again.</div>
+              </div>
+            </div>
+            <div class="guide-step">
+              <div class="guide-step-num">4</div>
+              <div class="guide-step-content">
+                <div class="guide-step-title">Add billing credits</div>
+                <div class="guide-step-desc">Go to <strong>Billing</strong> and add a payment method. GPT-4o costs ~$5/million input tokens.</div>
+              </div>
+            </div>
+          </div>
+          <div class="guide-tip">💡 <strong>Tip:</strong> Key starts with <code>sk-</code> (not <code>sk-ant-</code>)</div>
+          <div class="guide-cta">
+            <a class="btn-link" href="https://platform.openai.com/api-keys" target="_blank">Open OpenAI Platform →</a>
+            <button class="btn-link secondary" onclick="closeModal('modal-openai')">Got it, close</button>
           </div>
         </div>
       </div>
@@ -429,15 +478,28 @@ function renderAIProvider(card) {
 
     <hr style="border:none;border-top:1px solid #2a2a3e;margin:20px 0">
 
-    <div class="form-group">
-      <div class="label-row">
-        <label>Gemini API Key <span class="optional">(optional)</span></label>
-        <button class="help-btn" onclick="openModal('modal-gemini')">❓ How to get?</button>
+    <div class="providers-section">
+      <div class="providers-label">Optional Providers <span class="optional">— unlocks more models</span></div>
+      <div class="form-group" style="margin-top:12px">
+        <div class="label-row">
+          <label>Gemini API Key</label>
+          <button class="help-btn" onclick="openModal('modal-gemini')">❓ How to get?</button>
+        </div>
+        <input type="password" id="geminiKey" value="${formData.geminiApiKey}"
+          placeholder="AIza..."
+          oninput="formData.geminiApiKey = this.value">
+        <div class="hint">Enables web search + Google models (Gemini 2.5 Pro). Free tier: 1,500 req/day.</div>
       </div>
-      <input type="password" id="geminiKey" value="${formData.geminiApiKey}"
-        placeholder="AIza..."
-        oninput="formData.geminiApiKey = this.value">
-      <div class="hint">Enables web search grounding. Free tier: 1,500 req/day.</div>
+      <div class="form-group">
+        <div class="label-row">
+          <label>OpenAI API Key</label>
+          <button class="help-btn" onclick="openModal('modal-openai')">❓ How to get?</button>
+        </div>
+        <input type="password" id="openaiKey" value="${formData.openaiApiKey}"
+          placeholder="sk-..."
+          oninput="formData.openaiApiKey = this.value">
+        <div class="hint">Enables GPT-4o and other OpenAI models as fallback.</div>
+      </div>
     </div>
 
     <div class="btn-row">
@@ -491,15 +553,31 @@ function validateAndNext() {
   next();
 }
 
+function providerAvailable(modelValue) {
+  if (modelValue.startsWith('anthropic/')) return !!formData.anthropicApiKey;
+  if (modelValue.startsWith('google/'))    return !!formData.geminiApiKey;
+  if (modelValue.startsWith('openai/'))    return !!formData.openaiApiKey;
+  return false;
+}
+
 // Step 2: Models
 function renderModels(card) {
-  const modelOptions = MODELS.map(m => `
+  const availableModels = MODELS.filter(m => providerAvailable(m.value));
+
+  // If primary model's provider lost its key, reset to first available
+  if (!providerAvailable(formData.model) && availableModels.length > 0) {
+    formData.model = availableModels[0].value;
+  }
+  // Clean up fallbacks that no longer have keys
+  formData.fallbackModels = formData.fallbackModels.filter(m => providerAvailable(m));
+
+  const modelOptions = availableModels.map(m => `
     <option value="${m.value}" ${formData.model === m.value ? 'selected' : ''}>
       ${m.label} — ${m.tag}${m.alias ? ' (/' + m.alias + ')' : ''}
     </option>
   `).join('');
 
-  const fallbackOptions = MODELS
+  const fallbackOptions = availableModels
     .filter(m => m.value !== formData.model)
     .map(m => {
       const checked = formData.fallbackModels.includes(m.value) ? 'checked' : '';
@@ -534,8 +612,11 @@ function renderModels(card) {
 
     <div class="form-group">
       <label>Fallback Models <span class="optional">(optional)</span></label>
-      <p class="hint" style="margin-bottom:8px">OpenClaw automatically falls back if primary is unavailable or rate-limited.</p>
-      <div class="checkbox-group">${fallbackOptions}</div>
+      <p class="hint" style="margin-bottom:8px">OpenClaw falls back automatically if the primary model is unavailable. Only models with configured API keys are shown.</p>
+      ${fallbackOptions
+        ? `<div class="checkbox-group">${fallbackOptions}</div>`
+        : `<div class="empty-note">No additional models available. Add Gemini or OpenAI API keys in the previous step to unlock more options.</div>`
+      }
     </div>
 
     <div class="btn-row">
