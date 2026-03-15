@@ -448,7 +448,7 @@ function renderAIProvider(card) {
         </div>
         <input type="password" id="anthropicKey" value="${formData.anthropicApiKey}"
           placeholder="sk-ant-api03-..."
-          oninput="formData.anthropicApiKey = this.value">
+          oninput="formData.anthropicApiKey = this.value.trim()">
         <div class="error-msg" id="claudeError"></div>
       </div>
     </div>
@@ -464,7 +464,8 @@ function renderAIProvider(card) {
         </div>
         <textarea id="claudeCodeToken" rows="3"
           placeholder="Paste your Claude Code access token here..."
-          oninput="formData.anthropicApiKey = this.value"
+          oninput="formData.anthropicApiKey = this.value.trim()"
+          onpaste="setTimeout(()=>{ formData.anthropicApiKey = document.getElementById('claudeCodeToken').value.trim(); },0)"
           style="font-family:monospace;font-size:12px">${formData.claudeAuthMode === 'claude-code' ? formData.anthropicApiKey : ''}</textarea>
         <div class="hint">
           Find it in <code>~/.claude/.credentials.json</code> → <code>claudeAiOauth.accessToken</code>
