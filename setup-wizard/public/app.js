@@ -521,7 +521,7 @@ async function validateClaude() {
   if (!key) { el.className='validate-result fail'; el.textContent='Please enter a key/token'; return; }
   el.className='validate-result'; el.textContent='Validating…';
   try {
-    const res  = await api('/api/validate-claude', {
+    const res  = await api('/api/validate/anthropic', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ apiKey: key, mode: formData.claudeAuthMode })
@@ -542,11 +542,16 @@ async function validateClaude() {
 
 function validateAndNext() {
   const errEl = document.getElementById('claudeError');
-  if (!formData.anthropicApiKey) {
+  const hasKey = formData.anthropicApiKey && formData.anthropicApiKey.trim().length > 0;
+  if (!hasKey) {
     errEl.textContent = formData.claudeAuthMode === 'api-key'
-      ? 'Claude API key is required'
-      : 'Claude Code token is required';
+      ? '⚠️ Claude API key is required to continue'
+      : '⚠️ Claude Code token is required to continue';
     errEl.classList.add('visible');
+    errEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Shake the input field
+    const inp = document.getElementById(formData.claudeAuthMode === 'api-key' ? 'anthropicKey' : 'claudeCodeToken');
+    if (inp) { inp.style.borderColor = '#ef4444'; setTimeout(() => inp.style.borderColor = '', 2000); }
     return;
   }
   errEl.classList.remove('visible');
