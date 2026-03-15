@@ -7,13 +7,9 @@ metadata:
 spec:
   type: {{ .Values.service.type }}
   ports:
-    - port: {{ .Values.service.wizardPort }}
+    - port: {{ .Values.service.port }}
       targetPort: wizard
       protocol: TCP
       name: wizard
-    - port: {{ .Values.service.gatewayPort }}
-      targetPort: gateway
-      protocol: TCP
-      name: gateway
   selector:
     {{- include "openclaw.selectorLabels" . | nindent 4 }}

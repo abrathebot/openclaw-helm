@@ -8,7 +8,11 @@ RUN cd /wizard && npm install
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+# /data is the isolated state dir — mounted as PVC per pod
+RUN mkdir -p /data
 VOLUME ["/data"]
-EXPOSE 3000 18789
+
+# Only expose wizard port — gateway (18789) is internal only
+EXPOSE 3000
 
 ENTRYPOINT ["/entrypoint.sh"]

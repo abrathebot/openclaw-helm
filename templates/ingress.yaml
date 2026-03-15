@@ -21,11 +21,13 @@ spec:
     - host: {{ .Values.ingress.host }}
       http:
         paths:
-          - path: /
+          # Route /{releaseName}/* → wizard (port 3000)
+          # Wizard handles: setup UI, dashboard, and gateway proxy
+          - path: /{{ .Release.Name }}
             pathType: Prefix
             backend:
               service:
                 name: {{ include "openclaw.fullname" . }}
                 port:
-                  number: {{ .Values.service.wizardPort }}
+                  number: {{ .Values.service.port }}
 {{- end }}

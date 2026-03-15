@@ -1,14 +1,10 @@
 #!/bin/sh
 set -e
 
+# All openclaw state goes to /data — never touches host system
 export HOME=/data
-CONFIG_PATH="/data/.openclaw/openclaw.json"
+export OPENCLAW_CONFIG=/data/.openclaw/openclaw.json
 
-if [ -f "$CONFIG_PATH" ]; then
-  echo "Configuration found. Starting OpenClaw gateway..."
-  export OPENCLAW_CONFIG="$CONFIG_PATH"
-  exec openclaw gateway start
-else
-  echo "No configuration found. Starting setup wizard on port 3000..."
-  exec node /wizard/server.js
-fi
+mkdir -p /data/.openclaw /data/.openclaw/workspace
+
+exec node /wizard/server.js

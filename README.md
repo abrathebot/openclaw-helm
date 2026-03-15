@@ -1,127 +1,110 @@
-# OpenClaw Helm Chart
+# openclaw-helm
 
-Deploy [OpenClaw](https://github.com/openclaw/openclaw) — an AI butler for Telegram, WhatsApp, and more — on Kubernetes with an interactive web setup wizard.
+Deploy [OpenClaw](https://github.com/openclaw/openclaw) on Kubernetes — multi-tenant, path-based routing, fully isolated per pod.
 
 ## Architecture
 
 ```
-                    ┌─────────────────────────────────┐
-                    │         Kubernetes Pod           │
-                    │                                  │
-  Browser ──────>  │  :3000  Setup Wizard (first run) │
-                    │         writes config to PVC     │
-                    │              │                    │
-                    │              ▼                    │
-  Telegram/WA ──>  │  :18789 OpenClaw Gateway          │
-                    │         (after config exists)     │
-                    │                                  │
-                    │  /data (PVC)                     │
-                    │   ├── .openclaw/openclaw.json    │
-                    │   └── workspace/                 │
-                    └─────────────────────────────────┘
+                    Kubernetes Cluster
+                    ┌─────────────────────────────────────────────┐
+                    │                                             │
+  ai.openclaw.id/alice/*  ──>  Pod: openclaw-alice               │
+                    │          ├── /data/.openclaw/ (PVC-alice)   │
+                    │          └── wizard:3000 + gateway:18789    │
+                    │                                             │
+  ai.openclaw.id/bob/*    ──>  Pod: openclaw-bob                  │
+                    │          ├── /data/.openclaw/ (PVC-bob)     │
+                    │          └── wizard:3000 + gateway:18789    │
+                    └─────────────────────────────────────────────┘
 ```
 
-## Quick Start
+Each Helm release = one isolated OpenClaw instance with its own:
+- Config & credentials (`/data/.openclaw/`)
+- Workspace (`/data/.openclaw/workspace/`)
+- URL path (`/{release-name}/`)
 
-**1. Clone and install**
+**The host machine's OpenClaw is never touched.**
+
+## URL Routing
+
+| URL | Purpose |
+|-----|---------|
+| `https://ai.openclaw.id/{name}/` | Setup wizard |
+| `https://ai.openclaw.id/{name}/dashboard` | Dashboard |
+| `https://ai.openclaw.id/{name}/gateway/` | OpenClaw gateway UI |
+
+## Deploy an instance
 
 ```bash
-git clone https://github.com/openclaw/openclaw-helm.git
+# Clone chart
+git clone https://github.com/abrathebot/openclaw-helm.git
 cd openclaw-helm
-bash install.sh
+
+# Deploy "alice" instance
+helm install openclaw-alice . \
+  --namespace openclaw-alice --create-namespace \
+  --set ingress.enabled=true \
+  --set ingress.host=ai.openclaw.id
+
+# Deploy "bob" instance  
+helm install openclaw-bob . \
+  --namespace openclaw-bob --create-namespace \
+  --set ingress.enabled=true \
+  --set ingress.host=ai.openclaw.id
 ```
 
-**2. Port-forward to the wizard**
+Then open:
+- `https://ai.openclaw.id/openclaw-alice/` → Alice's wizard
+- `https://ai.openclaw.id/openclaw-bob/` → Bob's wizard
 
-```bash
-kubectl port-forward svc/openclaw 3000:3000 -n openclaw
-```
+## How it works
 
-**3. Open the wizard**
-
-Navigate to http://localhost:3000 and follow the setup steps.
-
-## Helm Install (manual)
-
-```bash
-helm install openclaw . -n openclaw --create-namespace
-```
-
-### With pre-configuration (skip wizard)
-
-```bash
-helm install openclaw . -n openclaw --create-namespace \
-  --set preConfig.enabled=true \
-  --set preConfig.anthropicApiKey=sk-ant-... \
-  --set preConfig.telegramBotToken=123456:ABC... \
-  --set preConfig.telegramAllowFrom='{123456789}'
-```
+1. **First visit** → wizard shows setup UI (no config yet)
+2. **Fill wizard** → writes `openclaw.json` + `auth-profiles.json` to pod's `/data/`
+3. **Gateway auto-starts** inside the container after config is written
+4. **Gateway UI** available at `/{name}/gateway/` (proxied by wizard)
 
 ## Values Reference
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `image.repository` | `ghcr.io/openclaw/openclaw` | Container image |
+| `image.repository` | `ghcr.io/abrathebot/openclaw` | Container image |
 | `image.tag` | `latest` | Image tag |
-| `service.wizardPort` | `3000` | Setup wizard port |
-| `service.gatewayPort` | `18789` | OpenClaw gateway port |
-| `service.type` | `ClusterIP` | Service type |
-| `ingress.enabled` | `false` | Enable ingress |
+| `ingress.enabled` | `true` | Enable ingress |
+| `ingress.host` | `ai.openclaw.id` | Shared hostname |
 | `ingress.className` | `nginx` | Ingress class |
-| `ingress.host` | `openclaw.yourdomain.com` | Ingress hostname |
-| `persistence.enabled` | `true` | Enable PVC for /data |
+| `persistence.enabled` | `true` | Enable PVC |
 | `persistence.size` | `2Gi` | PVC size |
-| `persistence.storageClass` | `""` | Storage class (empty = default) |
-| `resources.requests.memory` | `256Mi` | Memory request |
-| `resources.requests.cpu` | `100m` | CPU request |
-| `resources.limits.memory` | `1Gi` | Memory limit |
-| `resources.limits.cpu` | `500m` | CPU limit |
-| `preConfig.enabled` | `false` | Skip wizard, use values |
-| `preConfig.anthropicApiKey` | `""` | Claude API key |
-| `preConfig.telegramBotToken` | `""` | Telegram bot token |
-| `preConfig.telegramAllowFrom` | `[]` | Allowed Telegram user IDs |
-| `preConfig.geminiApiKey` | `""` | Gemini API key (web search) |
-| `preConfig.gatewayPort` | `18789` | Gateway port |
-| `preConfig.gatewayToken` | `""` | Gateway auth token |
-| `preConfig.model` | `anthropic/claude-sonnet-4-6` | Default AI model |
+| `service.port` | `3000` | Wizard port (only port exposed) |
 
 ## Docker (standalone)
 
 ```bash
 docker build -t openclaw .
-docker run -d -p 3000:3000 -p 18789:18789 -v openclaw-data:/data openclaw
+
+# Run as "mybot"
+docker run -d \
+  -p 3000:3000 \
+  -v openclaw-mybot:/data \
+  -e BASE_PATH=/mybot \
+  -e INGRESS_HOST=ai.openclaw.id \
+  openclaw
 ```
 
-Open http://localhost:3000 to configure.
+Open `http://localhost:3000/mybot` to configure.
 
-## Upgrading
+## Reset an instance
 
 ```bash
-helm upgrade openclaw . -n openclaw
+kubectl exec -n openclaw-alice deploy/openclaw-alice -- \
+  rm /data/.openclaw/openclaw.json
+kubectl rollout restart deploy/openclaw-alice -n openclaw-alice
 ```
 
-Your configuration in the PVC is preserved across upgrades.
+## Upgrade
 
-## Troubleshooting
-
-**Wizard not loading**
 ```bash
-kubectl logs -n openclaw deploy/openclaw
-kubectl describe pod -n openclaw -l app.kubernetes.io/name=openclaw
+helm upgrade openclaw-alice . -n openclaw-alice
 ```
 
-**Config issues — reset wizard**
-```bash
-kubectl exec -n openclaw deploy/openclaw -- rm /data/.openclaw/openclaw.json
-kubectl rollout restart deploy/openclaw -n openclaw
-```
-
-**Port conflict**
-```bash
-# Check if ports are in use
-kubectl get svc -n openclaw
-```
-
-## License
-
-MIT
+Config in PVC is preserved across upgrades.

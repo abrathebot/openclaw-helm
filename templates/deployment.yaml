@@ -28,64 +28,48 @@ spec:
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- if .Values.preConfig.enabled }}
-      initContainers:
-        - name: write-config
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          command: ["sh", "-c"]
-          args:
-            - |
-              if [ ! -f /data/.openclaw/openclaw.json ]; then
-                mkdir -p /data/.openclaw /data/workspace
-                cp /config/openclaw.json /data/.openclaw/openclaw.json
-                echo "Pre-configured openclaw.json written."
-              else
-                echo "Config already exists, skipping."
-              fi
-          volumeMounts:
-            - name: data
-              mountPath: /data
-            - name: preconfig
-              mountPath: /config
-      {{- end }}
       containers:
         - name: openclaw
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
+            # Isolation: all state goes to /data (PVC), never touches host
             - name: HOME
               value: "/data"
             - name: OPENCLAW_CONFIG
               value: "/data/.openclaw/openclaw.json"
-            {{- if .Values.preConfig.enabled }}
-            - name: ANTHROPIC_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "openclaw.fullname" . }}-secrets
-                  key: anthropic-api-key
-                  optional: true
-            {{- end }}
+            - name: CONFIG_DIR
+              value: "/data/.openclaw"
+            - name: WORKSPACE_DIR
+              value: "/data/.openclaw/workspace"
+            # Path-based routing — each release gets its own URL prefix
+            - name: RELEASE_NAME
+              value: {{ .Release.Name | quote }}
+            - name: BASE_PATH
+              value: {{ printf "/%s" .Release.Name | quote }}
+            # Used for controlUi.allowedOrigins in generated openclaw.json
+            - name: INGRESS_HOST
+              value: {{ .Values.ingress.host | quote }}
+            - name: GATEWAY_PORT
+              value: "18789"
           ports:
             - name: wizard
               containerPort: 3000
               protocol: TCP
-            - name: gateway
-              containerPort: {{ .Values.service.gatewayPort }}
-              protocol: TCP
           livenessProbe:
             httpGet:
-              path: /
+              path: /health
               port: wizard
-            initialDelaySeconds: 10
+            initialDelaySeconds: 15
             periodSeconds: 30
-            failureThreshold: 10
+            failureThreshold: 5
           readinessProbe:
             httpGet:
-              path: /
+              path: /health
               port: wizard
             initialDelaySeconds: 5
             periodSeconds: 10
-            failureThreshold: 10
+            failureThreshold: 5
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
@@ -99,8 +83,3 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
-        {{- if .Values.preConfig.enabled }}
-        - name: preconfig
-          configMap:
-            name: {{ include "openclaw.fullname" . }}-config
-        {{- end }}

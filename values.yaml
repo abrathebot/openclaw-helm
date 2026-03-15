@@ -1,17 +1,16 @@
 image:
-  repository: ghcr.io/openclaw/openclaw
+  repository: ghcr.io/abrathebot/openclaw
   tag: latest
   pullPolicy: IfNotPresent
 
 service:
-  wizardPort: 3000
-  gatewayPort: 18789
+  port: 3000          # wizard port — only port exposed to ingress
   type: ClusterIP
 
 ingress:
-  enabled: false
+  enabled: true
   className: nginx
-  host: openclaw.yourdomain.com
+  host: ai.openclaw.id   # shared hostname; path = /{.Release.Name}
   annotations: {}
   tls: []
 
@@ -32,15 +31,3 @@ resources:
 nodeSelector: {}
 tolerations: []
 affinity: {}
-
-# Optional pre-config (bypasses wizard)
-preConfig:
-  enabled: false
-  anthropicApiKey: ""
-  geminiApiKey: ""
-  telegramBotToken: ""
-  telegramUserId: ""
-  telegramAllowFrom: []
-  gatewayPort: 18789
-  gatewayToken: ""
-  model: "anthropic/claude-sonnet-4-6"
