@@ -61,7 +61,6 @@ NAMESPACE="${OPENCLAW_NAMESPACE:-openclaw}"      # helm only
 DATA_DIR="${OPENCLAW_DATA_DIR:-}"                # custom data dir (docker volume name or path)
 NO_TUNNEL=false
 NO_RTK=false
-NO_OPENVIKING=false
 YES=false
 
 # ── Arg parse ────────────────────────────────────────────────────────────────
@@ -83,7 +82,6 @@ while [[ $# -gt 0 ]]; do
     --data-dir)      DATA_DIR="$2";      shift 2 ;;
     --no-tunnel)     NO_TUNNEL=true;     shift ;;
     --no-rtk)        NO_RTK=true;        shift ;;
-    --no-openviking) NO_OPENVIKING=true; shift ;;
     -y|--yes)        YES=true;           shift ;;
     --help|-h)
       sed -n '2,20p' "$0" | sed 's/^# \?//'
@@ -211,7 +209,6 @@ fi
 step "Deploying OpenClaw: ${BOLD}${NAME}${RESET}"
 
 RTK_VAL="true";        [[ "$NO_RTK" = true ]]        && RTK_VAL="false"
-OV_VAL="true";         [[ "$NO_OPENVIKING" = true ]]  && OV_VAL="false"
 BASE_PATH="/${NAME}"
 INGRESS_HOST="${HOST:-localhost}"
 
@@ -225,7 +222,6 @@ if [[ "$MODE" = "docker" ]]; then
     -e INGRESS_HOST="$INGRESS_HOST" \
     -e RELEASE_NAME="$NAME" \
     -e RTK_ENABLED="$RTK_VAL" \
-    -e OPENVIKING_ENABLED="$OV_VAL" \
     "$FINAL_IMAGE"
 
   ok "Container '${NAME}' started on port ${PORT}"
@@ -242,7 +238,6 @@ elif [[ "$MODE" = "helm" ]]; then
 
   SET_ARGS=(
     --set "ingress.host=${HOST}"
-    --set "openviking.enabled=${OV_VAL}"
     --set "rtk.enabled=${RTK_VAL}"
   )
 
@@ -453,8 +448,6 @@ echo ""
 if [[ -n "$HOST" ]]; then
   echo -e "  ${BOLD}Setup Wizard:${RESET}   ${BLUE}https://${HOST}/${NAME}/${RESET}"
   echo -e "  ${BOLD}Gateway UI:${RESET}     ${BLUE}https://${HOST}/${NAME}/gateway/${RESET}"
-  [[ "$OV_VAL" = "true" ]] && \
-    echo -e "  ${BOLD}OpenViking:${RESET}     ${BLUE}https://${HOST}/${NAME}/openviking/${RESET}"
 else
   echo -e "  ${BOLD}Setup Wizard:${RESET}   ${BLUE}http://localhost:${PORT}/${NAME}/${RESET}"
   echo ""

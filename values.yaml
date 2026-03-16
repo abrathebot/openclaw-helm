@@ -47,29 +47,3 @@ affinity: {}
 rtk:
   enabled: true
 
-# ── OpenViking ────────────────────────────────────────────────────────────────
-# OpenViking (by ByteDance/Volcengine) is a context database for AI agents.
-# It runs as a separate Deployment, accessible at /{release}/openviking/ via ingress.
-# openclaw connects to it via OPENVIKING_URL env for memory persistence.
-openviking:
-  enabled: true
-  image:
-    repository: ghcr.io/volcengine/openviking
-    tag: main
-    pullPolicy: Always
-  # Default OpenViking HTTP port
-  port: 1933
-  # Mount path inside container where OpenViking stores its data
-  dataDir: /app/data
-  persistence:
-    enabled: true
-    size: 5Gi
-    storageClass: ""
-    accessMode: ReadWriteOnce
-  resources:
-    requests:
-      memory: 256Mi
-      cpu: 100m
-    limits:
-      memory: 1Gi
-      cpu: 500m

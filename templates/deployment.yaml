@@ -55,13 +55,7 @@ spec:
             # rtk — CLI proxy for LLM token compression in coding agents
             - name: RTK_ENABLED
               value: {{ .Values.rtk.enabled | quote }}
-            # OpenViking — context database for AI memory persistence
-            - name: OPENVIKING_ENABLED
-              value: {{ .Values.openviking.enabled | quote }}
-            {{- if .Values.openviking.enabled }}
-            - name: OPENVIKING_URL
-              value: {{ printf "http://%s-openviking:%d" (include "openclaw.fullname" .) (.Values.openviking.port | int) | quote }}
-            {{- end }}
+
           ports:
             - name: wizard
               containerPort: 3000

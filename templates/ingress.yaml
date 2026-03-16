@@ -30,14 +30,5 @@ spec:
                 name: {{ include "openclaw.fullname" . }}
                 port:
                   number: {{ .Values.service.port }}
-          {{- if .Values.openviking.enabled }}
-          # Route /{releaseName}/openviking/* → OpenViking context DB UI/API
-          - path: /{{ .Release.Name }}/openviking
-            pathType: Prefix
-            backend:
-              service:
-                name: {{ include "openclaw.fullname" . }}-openviking
-                port:
-                  number: {{ .Values.openviking.port }}
-          {{- end }}
+
 {{- end }}
