@@ -337,20 +337,22 @@ SVCEOF
   if [[ -n "$CF_CONFIG" && -f "$CF_CONFIG" ]]; then
     info "Patching: ${CF_CONFIG}"
 
-    # Check if this instance already has a route
-    if grep -q "service: http://localhost:${PORT}" "$CF_CONFIG" 2>/dev/null; then
-      ok "Route already present in ${CF_CONFIG}"
-    else
-      # Create backup
-      cp "$CF_CONFIG" "${CF_CONFIG}.bak.$(date +%s)"
+    # Always remove stale routes for this instance, then add fresh one
+    # Create backup
+    cp "$CF_CONFIG" "${CF_CONFIG}.bak.$(date +%s)"
 
-      # Use Python to safely patch the YAML
-      python3 << PYEOF
+    # Use Python to remove old route + add new one (idempotent)
+    python3 << PYEOF
 import re, sys
 
 with open('${CF_CONFIG}', 'r') as f:
     content = f.read()
 
+# Remove any existing route for this instance (any port)
+pattern = r'  - hostname: [^\n]+\n    path: "\^/${NAME}[^\n]*"\n    service: [^\n]+\n    originRequest:\n      connectTimeout: [^\n]+\n      tcpKeepAlive: [^\n]+\n      keepAliveConnections: [^\n]+\n      keepAliveTimeout: [^\n]+\n'
+content = re.sub(pattern, '', content)
+
+# Add fresh route at the top of ingress rules
 new_rule = '''  - hostname: ${HOST}
     path: "^/${NAME}(/|\$)"
     service: http://localhost:${PORT}
@@ -361,7 +363,6 @@ new_rule = '''  - hostname: ${HOST}
       keepAliveTimeout: 90s
 '''
 
-# Insert before first "- hostname:" rule (after "ingress:" line)
 if 'ingress:' in content:
     content = content.replace('ingress:\n', 'ingress:\n' + new_rule, 1)
     with open('${CF_CONFIG}', 'w') as f:
@@ -372,7 +373,6 @@ else:
     sys.exit(1)
 PYEOF
       ok "Route /${NAME} → localhost:${PORT} added to ${CF_CONFIG}"
-    fi
 
     # Validate
     if command -v cloudflared &>/dev/null; then
