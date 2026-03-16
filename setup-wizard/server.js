@@ -164,20 +164,32 @@ app.use(`${BASE_PATH}/gateway`, (req, res) => {
   (function() {
     const WS_URL = ${JSON.stringify(wsUrl)};
     const TOKEN  = ${JSON.stringify(gatewayToken)};
-    // If already has hash token, skip
-    if (!location.hash || location.hash === '#') {
-      if (TOKEN) {
-        // Build tokenized URL so gateway auto-connects
-        const newUrl = location.href.split('#')[0] + '?wsUrl=' + encodeURIComponent(WS_URL) + '#token=' + encodeURIComponent(TOKEN);
-        history.replaceState(null, '', newUrl);
-      }
+    // Inject both wsUrl and token as query params — hash fragments are never sent server-side
+    // so the gateway uses ?token= on the WS upgrade request
+    const params = new URLSearchParams(location.search);
+    if (!params.get('wsUrl') && WS_URL) {
+      const wsWithToken = TOKEN ? WS_URL + (WS_URL.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(TOKEN) : WS_URL;
+      params.set('wsUrl', wsWithToken);
+      if (TOKEN) params.set('token', TOKEN);
+      const newUrl = location.pathname + '?' + params.toString() + location.hash;
+      history.replaceState(null, '', newUrl);
     }
     // Also auto-fill fields after DOM ready
     document.addEventListener('DOMContentLoaded', () => {
       const wsInp = document.querySelector('input[type="text"], input[placeholder*="ws"], input[placeholder*="WebSocket"]');
-      if (wsInp && !wsInp.value) { wsInp.value = WS_URL; wsInp.dispatchEvent(new Event('input')); }
-      const tkInp = document.querySelectorAll('input[type="password"], input[type="text"]')[1];
-      if (TOKEN && tkInp && !tkInp.value) { tkInp.value = TOKEN; tkInp.dispatchEvent(new Event('input')); }
+      if (wsInp && !wsInp.value && WS_URL) {
+        const wsWithToken = TOKEN ? WS_URL + (WS_URL.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(TOKEN) : WS_URL;
+        wsInp.value = wsWithToken;
+        wsInp.dispatchEvent(new Event('input'));
+        wsInp.dispatchEvent(new Event('change'));
+      }
+      // Fill token field separately if UI has a dedicated token input
+      const allInputs = document.querySelectorAll('input[type="password"], input[placeholder*="token"], input[placeholder*="Token"]');
+      if (TOKEN && allInputs.length > 0) {
+        allInputs[0].value = TOKEN;
+        allInputs[0].dispatchEvent(new Event('input'));
+        allInputs[0].dispatchEvent(new Event('change'));
+      }
     });
   })();
 </script>`;
@@ -466,6 +478,8 @@ function buildConfig(form) {
       port: gatewayPort,
       mode: 'local',
       bind: 'lan',
+      // Trust requests from wizard proxy (127.0.0.1) so WS token injection works
+      trustedProxies: ['127.0.0.1', '::1'],
       auth: {
         mode: 'token',
         token: gatewayToken
@@ -548,7 +562,21 @@ const net = require('net');
 server.on('upgrade', (req, socket, head) => {
   const prefix = BASE_PATH + '/gateway';
   if (!req.url.startsWith(prefix)) { socket.destroy(); return; }
-  const upstreamPath = req.url.slice(prefix.length) || '/';
+  let upstreamPath = req.url.slice(prefix.length) || '/';
+  if (!upstreamPath.startsWith('/')) upstreamPath = '/' + upstreamPath;
+
+  // Inject gateway token into WS query string if not already present
+  // Token lives in openclaw.json — read fresh each connection
+  let gatewayToken = '';
+  try {
+    const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+    gatewayToken = cfg?.gateway?.auth?.token || '';
+  } catch {}
+  if (gatewayToken && !upstreamPath.includes('token=')) {
+    const sep = upstreamPath.includes('?') ? '&' : '?';
+    upstreamPath += `${sep}token=${encodeURIComponent(gatewayToken)}`;
+  }
+
   const upstream = net.connect(GATEWAY_PORT, '127.0.0.1', () => {
     // Ensure Origin header is present and matches allowedOrigins
     const headers = { ...req.headers };
@@ -556,6 +584,10 @@ server.on('upgrade', (req, socket, head) => {
     // If no origin, inject it so gateway CORS check passes
     if (!headers['origin']) {
       headers['origin'] = INGRESS_HOST ? `https://${INGRESS_HOST}` : `http://localhost:${PORT}`;
+    }
+    // Forward real client IP so gateway can log/trust correctly
+    if (!headers['x-forwarded-for'] && req.socket?.remoteAddress) {
+      headers['x-forwarded-for'] = req.socket.remoteAddress;
     }
     const headerStr = Object.entries(headers)
       .map(([k,v]) => `${k}: ${v}`)

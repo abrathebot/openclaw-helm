@@ -11,7 +11,15 @@ ingress:
   enabled: true
   className: nginx
   host: ai.openclaw.id   # shared hostname; path = /{.Release.Name}
-  annotations: {}
+  # WS 1006 fix: nginx annotations for long-lived WebSocket connections
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
   tls: []
 
 persistence:
@@ -31,3 +39,37 @@ resources:
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+# ── rtk ───────────────────────────────────────────────────────────────────────
+# rtk is a CLI proxy baked into the Docker image that compresses command outputs
+# 60-90% before sending to LLMs — reducing token usage in coding agents.
+# This flag controls whether rtk init --global --auto-patch runs at startup.
+rtk:
+  enabled: true
+
+# ── OpenViking ────────────────────────────────────────────────────────────────
+# OpenViking (by ByteDance/Volcengine) is a context database for AI agents.
+# It runs as a separate Deployment, accessible at /{release}/openviking/ via ingress.
+# openclaw connects to it via OPENVIKING_URL env for memory persistence.
+openviking:
+  enabled: true
+  image:
+    repository: ghcr.io/volcengine/openviking
+    tag: main
+    pullPolicy: Always
+  # Default OpenViking HTTP port
+  port: 1933
+  # Mount path inside container where OpenViking stores its data
+  dataDir: /app/data
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 1Gi
+      cpu: 500m

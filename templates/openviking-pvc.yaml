@@ -1,0 +1,18 @@
+{{- if and .Values.openviking.enabled .Values.openviking.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "openclaw.fullname" . }}-openviking-data
+  labels:
+    {{- include "openclaw.labels" . | nindent 4 }}
+    app.kubernetes.io/component: openviking
+spec:
+  accessModes:
+    - {{ .Values.openviking.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.openviking.persistence.size }}
+  {{- if .Values.openviking.persistence.storageClass }}
+  storageClassName: {{ .Values.openviking.persistence.storageClass }}
+  {{- end }}
+{{- end }}

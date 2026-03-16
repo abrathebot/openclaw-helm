@@ -1,0 +1,66 @@
+{{- if .Values.openviking.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "openclaw.fullname" . }}-openviking
+  labels:
+    {{- include "openclaw.labels" . | nindent 4 }}
+    app.kubernetes.io/component: openviking
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "openclaw.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: openviking
+  template:
+    metadata:
+      labels:
+        {{- include "openclaw.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: openviking
+    spec:
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: openviking
+          image: "{{ .Values.openviking.image.repository }}:{{ .Values.openviking.image.tag }}"
+          imagePullPolicy: {{ .Values.openviking.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.openviking.port }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 5
+          resources:
+            {{- toYaml .Values.openviking.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.openviking.dataDir }}
+      volumes:
+        - name: data
+          {{- if .Values.openviking.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "openclaw.fullname" . }}-openviking-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+{{- end }}
