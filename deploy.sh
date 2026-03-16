@@ -6,17 +6,14 @@
 # ╚══════════════════════════════════════════════════════════════════╝
 #
 # Usage:
-#   ./deploy.sh                                           # interactive
-#   ./deploy.sh --name mybot --host ai.example.com        # non-interactive
-#   ./deploy.sh --name mybot --host ai.example.com \
-#               --cf-config ~/.cloudflared/tunnel.yml     # with CF tunnel
-#   ./deploy.sh --name mybot --host ai.example.com \
-#               --cf-token <TUNNEL_TOKEN>                 # zero-config CF
-#   ./deploy.sh --name mybot --mode helm \
-#               --host ai.example.com                     # Helm/K8s mode
+#   ./deploy.sh <name>                                    # interactive (name required)
+#   ./deploy.sh mybot                                     # uses .env for host/token
+#   ./deploy.sh raya-bot --host ai.example.com            # override host
+#   ./deploy.sh mybot --cf-config ~/.cloudflared/x.yml    # existing CF config
+#   ./deploy.sh mybot --mode helm                         # Helm/K8s mode
 #
 #   curl -fsSL https://raw.githubusercontent.com/abrathebot/openclaw-helm/master/deploy.sh | \
-#     bash -s -- --name mybot --host ai.example.com --cf-token TOKEN
+#     bash -s -- mybot
 
 set -euo pipefail
 
@@ -50,15 +47,15 @@ warn() { echo -e "${YELLOW}!${RESET} $*"; }
 info() { echo -e "${DIM}  $*${RESET}"; }
 step() { echo -e "\n${BOLD}${CYAN}→ $*${RESET}"; }
 
-# ── Defaults (can be overridden by .env or CLI flags) ────────────────────────
-NAME="${OPENCLAW_NAME:-openclaw}"
+# ── Defaults (infra from .env, name always from CLI) ─────────────────────────
+NAME=""                                          # required: positional arg or --name
 HOST="${OPENCLAW_HOST:-}"
 MODE="${OPENCLAW_MODE:-docker}"                  # docker | helm
 IMAGE="${OPENCLAW_IMAGE:-ghcr.io/abrathebot/openclaw:latest}"
 LOCAL_IMAGE="openclaw-helm:latest"
 PORT="${OPENCLAW_PORT:-}"                        # auto-detect if empty
 CF_CONFIG="${CF_CONFIG:-}"                       # path to existing cloudflared config
-CF_TOKEN="${CF_TUNNEL_TOKEN:-}"                  # CF tunnel token (zero-config)
+CF_TOKEN="${CF_TUNNEL_TOKEN:-}"                  # CF tunnel token (from .env)
 CF_TUNNEL_SERVICE="${CF_TUNNEL_SERVICE:-}"       # systemd user service name (auto-detect)
 NAMESPACE="${OPENCLAW_NAMESPACE:-openclaw}"      # helm only
 DATA_DIR="${OPENCLAW_DATA_DIR:-}"                # custom data dir (docker volume name or path)
@@ -68,6 +65,11 @@ NO_OPENVIKING=false
 YES=false
 
 # ── Arg parse ────────────────────────────────────────────────────────────────
+# First positional arg = instance name
+if [[ $# -gt 0 && "${1:0:1}" != "-" ]]; then
+  NAME="$1"; shift
+fi
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --name|-n)       NAME="$2";          shift 2 ;;
@@ -105,10 +107,12 @@ echo -e "${RESET}${BOLD}  OpenClaw Deploy Script${RESET}  ${DIM}— Docker + Clo
 echo ""
 
 # ── Interactive prompts ───────────────────────────────────────────────────────
-if [[ -z "$HOST" && "$YES" = false ]]; then
-  read -rp "$(echo -e "${BOLD}Instance name${RESET} [${NAME}]: ")" _n
-  NAME="${_n:-$NAME}"
+if [[ -z "$NAME" ]]; then
+  read -rp "$(echo -e "${BOLD}Instance name${RESET} (e.g. raya-bot): ")" NAME
+  NAME="${NAME:-openclaw}"
+fi
 
+if [[ -z "$HOST" && "$YES" = false ]]; then
   read -rp "$(echo -e "${BOLD}Public hostname${RESET} (e.g. ai.example.com, blank = port-forward only): ")" _h
   HOST="${_h:-}"
 
@@ -118,7 +122,6 @@ if [[ -z "$HOST" && "$YES" = false ]]; then
   fi
 fi
 
-NAME="${NAME:-openclaw}"
 DATA_DIR="${DATA_DIR:-${NAME}-data}"
 
 # ── Detect mode ───────────────────────────────────────────────────────────────
