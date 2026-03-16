@@ -160,37 +160,23 @@ app.use(`${BASE_PATH}/gateway`, (req, res) => {
           gatewayToken = cfg?.gateway?.auth?.token || '';
         } catch {}
         const wsScript = `<script>
-  // Auto-connect to this deployment's gateway
+  // Auto-connect: inject gatewayUrl + token as URL params so OpenClaw UI picks them up
+  // OpenClaw UI reads: n.get('gatewayUrl') ?? r.get('gatewayUrl') and r.get('token')
+  // where n=hash params, r=search params
   (function() {
-    const WS_URL = ${JSON.stringify(wsUrl)};
+    const GW_URL = ${JSON.stringify(wsUrl)};
     const TOKEN  = ${JSON.stringify(gatewayToken)};
-    // Inject both wsUrl and token as query params — hash fragments are never sent server-side
-    // so the gateway uses ?token= on the WS upgrade request
-    const params = new URLSearchParams(location.search);
-    if (!params.get('wsUrl') && WS_URL) {
-      const wsWithToken = TOKEN ? WS_URL + (WS_URL.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(TOKEN) : WS_URL;
-      params.set('wsUrl', wsWithToken);
-      if (TOKEN) params.set('token', TOKEN);
-      const newUrl = location.pathname + '?' + params.toString() + location.hash;
-      history.replaceState(null, '', newUrl);
+    if (!GW_URL) return;
+    // Use hash params (n) — OpenClaw checks hash first, then search
+    // This avoids the URL being bookmarked with token in it
+    const hashStr = location.hash.startsWith('#') ? location.hash.slice(1) : '';
+    const hashParams = new URLSearchParams(hashStr);
+    const alreadySet = hashParams.get('gatewayUrl') || new URLSearchParams(location.search).get('gatewayUrl');
+    if (!alreadySet) {
+      hashParams.set('gatewayUrl', GW_URL);
+      if (TOKEN) hashParams.set('token', TOKEN);
+      history.replaceState(null, '', location.pathname + location.search + '#' + hashParams.toString());
     }
-    // Also auto-fill fields after DOM ready
-    document.addEventListener('DOMContentLoaded', () => {
-      const wsInp = document.querySelector('input[type="text"], input[placeholder*="ws"], input[placeholder*="WebSocket"]');
-      if (wsInp && !wsInp.value && WS_URL) {
-        const wsWithToken = TOKEN ? WS_URL + (WS_URL.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(TOKEN) : WS_URL;
-        wsInp.value = wsWithToken;
-        wsInp.dispatchEvent(new Event('input'));
-        wsInp.dispatchEvent(new Event('change'));
-      }
-      // Fill token field separately if UI has a dedicated token input
-      const allInputs = document.querySelectorAll('input[type="password"], input[placeholder*="token"], input[placeholder*="Token"]');
-      if (TOKEN && allInputs.length > 0) {
-        allInputs[0].value = TOKEN;
-        allInputs[0].dispatchEvent(new Event('input'));
-        allInputs[0].dispatchEvent(new Event('change'));
-      }
-    });
   })();
 </script>`;
         body = body.replace('<head>', `<head>\n  <base href="${BASE_PATH}/gateway/">\n  ${wsScript}`);
