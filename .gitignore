@@ -1,1 +1,7 @@
 setup-wizard/node_modules/
+
+# Local secrets — never commit these
+.env
+openclaw.env
+*.env.local
+

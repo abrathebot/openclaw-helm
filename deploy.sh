@@ -20,6 +20,26 @@
 
 set -euo pipefail
 
+# ── Load .env (priority: ./openclaw.env > ./.env > script-dir/.env) ──────────
+_load_env() {
+  local candidates=(
+    "./openclaw.env"
+    "./.env"
+    "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/.env"
+    "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/openclaw.env"
+  )
+  for f in "${candidates[@]}"; do
+    if [[ -f "$f" ]]; then
+      # shellcheck disable=SC1090
+      set -a; source "$f"; set +a
+      _ENV_FILE="$f"
+      break
+    fi
+  done
+}
+_ENV_FILE=""
+_load_env
+
 # ── Colors ────────────────────────────────────────────────────────────────────
 BOLD='\033[1m'; DIM='\033[2m'; RESET='\033[0m'
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -30,18 +50,18 @@ warn() { echo -e "${YELLOW}!${RESET} $*"; }
 info() { echo -e "${DIM}  $*${RESET}"; }
 step() { echo -e "\n${BOLD}${CYAN}→ $*${RESET}"; }
 
-# ── Defaults ──────────────────────────────────────────────────────────────────
-NAME="openclaw"
-HOST=""
-MODE="docker"                  # docker | helm
-IMAGE="ghcr.io/abrathebot/openclaw:latest"
+# ── Defaults (can be overridden by .env or CLI flags) ────────────────────────
+NAME="${OPENCLAW_NAME:-openclaw}"
+HOST="${OPENCLAW_HOST:-}"
+MODE="${OPENCLAW_MODE:-docker}"                  # docker | helm
+IMAGE="${OPENCLAW_IMAGE:-ghcr.io/abrathebot/openclaw:latest}"
 LOCAL_IMAGE="openclaw-helm:latest"
-PORT=""                        # auto-detect if empty
-CF_CONFIG=""                   # path to existing cloudflared config
-CF_TOKEN=""                    # CF tunnel token (zero-config)
-CF_TUNNEL_SERVICE=""           # systemd user service name (auto-detect)
-NAMESPACE="openclaw"           # helm only
-DATA_DIR=""                    # custom data dir (docker volume name or path)
+PORT="${OPENCLAW_PORT:-}"                        # auto-detect if empty
+CF_CONFIG="${CF_CONFIG:-}"                       # path to existing cloudflared config
+CF_TOKEN="${CF_TUNNEL_TOKEN:-}"                  # CF tunnel token (zero-config)
+CF_TUNNEL_SERVICE="${CF_TUNNEL_SERVICE:-}"       # systemd user service name (auto-detect)
+NAMESPACE="${OPENCLAW_NAMESPACE:-openclaw}"      # helm only
+DATA_DIR="${OPENCLAW_DATA_DIR:-}"                # custom data dir (docker volume name or path)
 NO_TUNNEL=false
 NO_RTK=false
 NO_OPENVIKING=false
@@ -81,6 +101,7 @@ cat << 'LOGO'
     /_/
 LOGO
 echo -e "${RESET}${BOLD}  OpenClaw Deploy Script${RESET}  ${DIM}— Docker + Cloudflare Tunnel${RESET}"
+[[ -n "$_ENV_FILE" ]] && echo -e "  ${DIM}Config loaded from: ${_ENV_FILE}${RESET}"
 echo ""
 
 # ── Interactive prompts ───────────────────────────────────────────────────────
