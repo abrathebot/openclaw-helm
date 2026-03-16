@@ -1,110 +1,107 @@
-# openclaw-helm
+# OpenClaw Helm Chart
 
-Deploy [OpenClaw](https://github.com/openclaw/openclaw) on Kubernetes — multi-tenant, path-based routing, fully isolated per pod.
+Deploy [OpenClaw](https://openclaw.ai) — your self-hosted AI butler — on Kubernetes in one command.
+
+## One-Click Install
+
+```bash
+# Quickstart (no ingress, access via port-forward)
+curl -fsSL https://raw.githubusercontent.com/abrathebot/openclaw-helm/master/install.sh | bash
+
+# With ingress host (production)
+curl -fsSL https://raw.githubusercontent.com/abrathebot/openclaw-helm/master/install.sh | \
+  bash -s -- --host ai.example.com
+
+# Custom release name + namespace
+curl -fsSL https://raw.githubusercontent.com/abrathebot/openclaw-helm/master/install.sh | \
+  bash -s -- --host ai.example.com --name mybot --namespace bots
+```
+
+Or clone and run locally:
+
+```bash
+git clone https://github.com/abrathebot/openclaw-helm.git
+cd openclaw-helm
+./install.sh --host ai.example.com
+```
+
+## What You Get
+
+After install, three URLs are live at `https://<host>/<release>/`:
+
+| URL | Purpose |
+|-----|---------|
+| `/<release>/` | Setup wizard — configure API keys, channels, models |
+| `/<release>/gateway/` | Control UI — chat, sessions, cron, config |
+| `/<release>/openviking/` | OpenViking context DB (AI memory persistence) |
+
+## Batteries Included
+
+| Component | Default | Notes |
+|-----------|---------|-------|
+| **OpenClaw gateway** | ✅ | AI butler, all channels |
+| **Setup wizard** | ✅ | Web UI for first-run config |
+| **OpenViking** | ✅ on | Context database for agent memory |
+| **rtk** | ✅ on | CLI proxy (60-90% token compression for coding agents) |
+| **Persistent storage** | ✅ | PVC for config, workspace, memory |
+
+## Helm (manual)
+
+```bash
+helm upgrade --install openclaw . \
+  --namespace openclaw \
+  --create-namespace \
+  --set ingress.host=ai.example.com \
+  --wait
+```
+
+## values.yaml highlights
+
+```yaml
+ingress:
+  host: ai.example.com   # your domain
+
+openviking:
+  enabled: true          # context DB for AI memory
+  persistence:
+    size: 5Gi
+
+rtk:
+  enabled: true          # CLI token compression
+
+persistence:
+  size: 2Gi              # gateway config + workspace
+
+resources:
+  requests:
+    memory: 256Mi
+    cpu: 100m
+```
+
+## Requirements
+
+- Kubernetes 1.24+
+- Helm 3.x
+- nginx-ingress controller (for ingress) — or use port-forward for local
+- PersistentVolume support (default StorageClass)
 
 ## Architecture
 
 ```
-                    Kubernetes Cluster
-                    ┌─────────────────────────────────────────────┐
-                    │                                             │
-  ai.openclaw.id/alice/*  ──>  Pod: openclaw-alice               │
-                    │          ├── /data/.openclaw/ (PVC-alice)   │
-                    │          └── wizard:3000 + gateway:18789    │
-                    │                                             │
-  ai.openclaw.id/bob/*    ──>  Pod: openclaw-bob                  │
-                    │          ├── /data/.openclaw/ (PVC-bob)     │
-                    │          └── wizard:3000 + gateway:18789    │
-                    └─────────────────────────────────────────────┘
+Browser → Ingress → /<release>/* → Wizard (port 3000)
+                                     │
+                                     ├── /gateway/* → WS proxy → Gateway (18789, internal)
+                                     └── /openviking/* → OpenViking (1933, internal)
 ```
 
-Each Helm release = one isolated OpenClaw instance with its own:
-- Config & credentials (`/data/.openclaw/`)
-- Workspace (`/data/.openclaw/workspace/`)
-- URL path (`/{release-name}/`)
+- **Gateway** runs internally on port 18789 — never exposed directly to ingress
+- **Wizard** handles WS proxy with automatic token injection and device-auth bypass
+- **OpenViking** runs as a separate Deployment with its own PVC
 
-**The host machine's OpenClaw is never touched.**
-
-## URL Routing
-
-| URL | Purpose |
-|-----|---------|
-| `https://ai.openclaw.id/{name}/` | Setup wizard |
-| `https://ai.openclaw.id/{name}/dashboard` | Dashboard |
-| `https://ai.openclaw.id/{name}/gateway/` | OpenClaw gateway UI |
-
-## Deploy an instance
+## Uninstall
 
 ```bash
-# Clone chart
-git clone https://github.com/abrathebot/openclaw-helm.git
-cd openclaw-helm
-
-# Deploy "alice" instance
-helm install openclaw-alice . \
-  --namespace openclaw-alice --create-namespace \
-  --set ingress.enabled=true \
-  --set ingress.host=ai.openclaw.id
-
-# Deploy "bob" instance  
-helm install openclaw-bob . \
-  --namespace openclaw-bob --create-namespace \
-  --set ingress.enabled=true \
-  --set ingress.host=ai.openclaw.id
+helm uninstall openclaw -n openclaw
+# To also delete PVCs (data):
+kubectl delete pvc -n openclaw -l app.kubernetes.io/instance=openclaw
 ```
-
-Then open:
-- `https://ai.openclaw.id/openclaw-alice/` → Alice's wizard
-- `https://ai.openclaw.id/openclaw-bob/` → Bob's wizard
-
-## How it works
-
-1. **First visit** → wizard shows setup UI (no config yet)
-2. **Fill wizard** → writes `openclaw.json` + `auth-profiles.json` to pod's `/data/`
-3. **Gateway auto-starts** inside the container after config is written
-4. **Gateway UI** available at `/{name}/gateway/` (proxied by wizard)
-
-## Values Reference
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `image.repository` | `ghcr.io/abrathebot/openclaw` | Container image |
-| `image.tag` | `latest` | Image tag |
-| `ingress.enabled` | `true` | Enable ingress |
-| `ingress.host` | `ai.openclaw.id` | Shared hostname |
-| `ingress.className` | `nginx` | Ingress class |
-| `persistence.enabled` | `true` | Enable PVC |
-| `persistence.size` | `2Gi` | PVC size |
-| `service.port` | `3000` | Wizard port (only port exposed) |
-
-## Docker (standalone)
-
-```bash
-docker build -t openclaw .
-
-# Run as "mybot"
-docker run -d \
-  -p 3000:3000 \
-  -v openclaw-mybot:/data \
-  -e BASE_PATH=/mybot \
-  -e INGRESS_HOST=ai.openclaw.id \
-  openclaw
-```
-
-Open `http://localhost:3000/mybot` to configure.
-
-## Reset an instance
-
-```bash
-kubectl exec -n openclaw-alice deploy/openclaw-alice -- \
-  rm /data/.openclaw/openclaw.json
-kubectl rollout restart deploy/openclaw-alice -n openclaw-alice
-```
-
-## Upgrade
-
-```bash
-helm upgrade openclaw-alice . -n openclaw-alice
-```
-
-Config in PVC is preserved across upgrades.
