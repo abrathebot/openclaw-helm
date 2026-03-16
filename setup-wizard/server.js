@@ -478,6 +478,20 @@ function buildConfig(form) {
         dangerouslyDisableDeviceAuth: true,
         dangerouslyAllowHostHeaderOriginFallback: true
       }
+    },
+    // ── OpenViking Knowledge Base (auto-configured) ──────────────────────────
+    // LiteLLM proxy (port 10624) + OpenViking MCP server (port 2033) run
+    // inside the container automatically — no user config needed.
+    // This skill config lets the OpenClaw agent query the knowledge base.
+    skills: {
+      entries: {
+        openviking: {
+          enabled: true,
+          config: {
+            mcpUrl: 'http://localhost:2033/mcp'
+          }
+        }
+      }
     }
   };
 }
