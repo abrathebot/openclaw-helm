@@ -471,7 +471,12 @@ function buildConfig(form) {
         token: gatewayToken
       },
       controlUi: {
-        allowedOrigins
+        allowedOrigins,
+        // Required for Control UI behind a reverse proxy — wizard proxies WS
+        // so browser has no device identity to pair. Disable device pairing
+        // for Control UI only (token auth still required).
+        dangerouslyDisableDeviceAuth: true,
+        dangerouslyAllowHostHeaderOriginFallback: true
       }
     }
   };
